@@ -1,0 +1,305 @@
+{
+  "seed": 42,
+  "generated_at": "2026-11-24T09:45:40.035123+00:00",
+  "descriptions": {
+    "detection": "Compare case-and-rule predictions with the synthetic scenario labels.",
+    "correlation": "Compare source isolation, a time-only baseline and the platform's evidence-aware event links.",
+    "missing_evidence": "Remove an exact proportion of fixture records and evaluate the remaining graph against original truth.",
+    "timestamp_inconsistency": "Inject a known source clock offset, count changed event orderings and test correction.",
+    "integrity": "Alter preserved bytes, edit a custody record and remove its final entry in a disposable database.",
+    "scalability": "Measure normalization and graph construction on generated records in one process.",
+    "confidence": "Compare the platform score under single-source, corroborated and integrity-failed evidence."
+  },
+  "limitations": [
+    "Synthetic labels and fixture distributions do not establish production effectiveness.",
+    "Detection is evaluated per case and rule, so repeated alerts for one rule count once.",
+    "Correlation evaluates all unordered event pairs in the labeled fixture, with the original positive labels retained after removal. A large negative class can make the false-positive rate look small.",
+    "Scalability timings include Python allocation tracing. Peak MiB measures traced Python allocations, not process RSS.",
+    "Clock tests inject known offsets. Real offsets require independent validation."
+  ],
+  "configuration": {
+    "scenarios": 5,
+    "pair_fixture_events": 180,
+    "labeled_pairs": 90,
+    "window_seconds": 30,
+    "platform": "Windows-11-10.0.26100-SP0",
+    "python": "3.13.2"
+  },
+  "rows": [
+    {
+      "experiment": "detection",
+      "method": "platform rules",
+      "condition": "five original scenarios",
+      "precision": 0.8181818181818182,
+      "recall": 1.0,
+      "f1": 0.9,
+      "false_positive_rate": 0.043478260869565216,
+      "tp": 9,
+      "fp": 2,
+      "tn": 44,
+      "fn": 0
+    },
+    {
+      "experiment": "detection",
+      "method": "independent sources",
+      "condition": "five original scenarios",
+      "precision": 0.8888888888888888,
+      "recall": 0.8888888888888888,
+      "f1": 0.8888888888888888,
+      "false_positive_rate": 0.021739130434782608,
+      "tp": 8,
+      "fp": 1,
+      "tn": 45,
+      "fn": 1
+    },
+    {
+      "experiment": "correlation",
+      "method": "source-isolated",
+      "condition": "all records",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0,
+      "false_positive_rate": 0.0056179775280898875,
+      "tp": 0,
+      "fp": 90,
+      "tn": 15930,
+      "fn": 90
+    },
+    {
+      "experiment": "correlation",
+      "method": "time-only",
+      "condition": "all records",
+      "precision": 0.2,
+      "recall": 1.0,
+      "f1": 0.33333333333333337,
+      "false_positive_rate": 0.02247191011235955,
+      "tp": 90,
+      "fp": 360,
+      "tn": 15660,
+      "fn": 0
+    },
+    {
+      "experiment": "correlation",
+      "method": "evidence-aware",
+      "condition": "all records",
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0
+    },
+    {
+      "experiment": "missing_evidence",
+      "method": "evidence-aware",
+      "condition": "0% removed",
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0
+    },
+    {
+      "experiment": "missing_evidence",
+      "method": "evidence-aware",
+      "condition": "10% removed",
+      "precision": 0.6396396396396397,
+      "recall": 0.7888888888888889,
+      "f1": 0.7064676616915422,
+      "false_positive_rate": 0.0024968789013732834,
+      "tp": 71,
+      "fp": 40,
+      "tn": 15980,
+      "fn": 19
+    },
+    {
+      "experiment": "missing_evidence",
+      "method": "evidence-aware",
+      "condition": "25% removed",
+      "precision": 0.6133333333333333,
+      "recall": 0.5111111111111111,
+      "f1": 0.5575757575757575,
+      "false_positive_rate": 0.0018102372034956304,
+      "tp": 46,
+      "fp": 29,
+      "tn": 15991,
+      "fn": 44
+    },
+    {
+      "experiment": "missing_evidence",
+      "method": "evidence-aware",
+      "condition": "50% removed",
+      "precision": 0.625,
+      "recall": 0.2777777777777778,
+      "f1": 0.3846153846153846,
+      "false_positive_rate": 0.0009363295880149813,
+      "tp": 25,
+      "fp": 15,
+      "tn": 16005,
+      "fn": 65
+    },
+    {
+      "experiment": "timestamp_inconsistency",
+      "method": "evidence-aware",
+      "condition": "+0 s skew, +0 s correction",
+      "order_errors": 0,
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0
+    },
+    {
+      "experiment": "timestamp_inconsistency",
+      "method": "evidence-aware",
+      "condition": "+30 s skew, +0 s correction",
+      "order_errors": 122,
+      "precision": 0.5882352941176471,
+      "recall": 0.6666666666666666,
+      "f1": 0.625,
+      "false_positive_rate": 0.0026217228464419477,
+      "tp": 60,
+      "fp": 42,
+      "tn": 15978,
+      "fn": 30
+    },
+    {
+      "experiment": "timestamp_inconsistency",
+      "method": "evidence-aware",
+      "condition": "+90 s skew, +0 s correction",
+      "order_errors": 122,
+      "precision": 0.5357142857142857,
+      "recall": 0.3333333333333333,
+      "f1": 0.41095890410958896,
+      "false_positive_rate": 0.0016229712858926342,
+      "tp": 30,
+      "fp": 26,
+      "tn": 15994,
+      "fn": 60
+    },
+    {
+      "experiment": "timestamp_inconsistency",
+      "method": "evidence-aware",
+      "condition": "+90 s skew, -90 s correction",
+      "order_errors": 0,
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0
+    },
+    {
+      "experiment": "integrity",
+      "method": "vault and custody",
+      "condition": "Original evidence bytes",
+      "result": "pass"
+    },
+    {
+      "experiment": "integrity",
+      "method": "vault and custody",
+      "condition": "Original custody chain",
+      "result": "pass"
+    },
+    {
+      "experiment": "integrity",
+      "method": "vault and custody",
+      "condition": "Changed evidence bytes",
+      "result": "pass"
+    },
+    {
+      "experiment": "integrity",
+      "method": "vault and custody",
+      "condition": "Modified custody entry",
+      "result": "pass"
+    },
+    {
+      "experiment": "integrity",
+      "method": "vault and custody",
+      "condition": "Deleted final custody entry",
+      "result": "pass"
+    },
+    {
+      "experiment": "scalability",
+      "method": "normalization and graph",
+      "condition": "1,000 records",
+      "events": 1000,
+      "seconds": 0.6161922000001141,
+      "correlation_seconds": 0.22767240000030142,
+      "throughput": 1622.8702667768512,
+      "peak_mib": 2.9714221954345703,
+      "relationships": 981
+    },
+    {
+      "experiment": "scalability",
+      "method": "normalization and graph",
+      "condition": "10,000 records",
+      "events": 10000,
+      "seconds": 3.8760652000000846,
+      "correlation_seconds": 1.3914526999997179,
+      "throughput": 2579.9359618614726,
+      "peak_mib": 25.70600128173828,
+      "relationships": 9981
+    },
+    {
+      "experiment": "scalability",
+      "method": "normalization and graph",
+      "condition": "50,000 records",
+      "events": 50000,
+      "seconds": 36.63116910000008,
+      "correlation_seconds": 14.376119100000324,
+      "throughput": 1364.9578003777087,
+      "peak_mib": 127.83989715576172,
+      "relationships": 49981
+    },
+    {
+      "experiment": "scalability",
+      "method": "normalization and graph",
+      "condition": "100,000 records",
+      "events": 100000,
+      "seconds": 85.90380360000017,
+      "correlation_seconds": 20.04944130000058,
+      "throughput": 1164.092808575007,
+      "peak_mib": 255.1950101852417,
+      "relationships": 99981
+    },
+    {
+      "experiment": "confidence",
+      "method": "weighted index",
+      "condition": "single source",
+      "score": 87,
+      "category": "high"
+    },
+    {
+      "experiment": "confidence",
+      "method": "weighted index",
+      "condition": "corroborated",
+      "score": 100,
+      "category": "high"
+    },
+    {
+      "experiment": "confidence",
+      "method": "weighted index",
+      "condition": "conflicting integrity",
+      "score": 86,
+      "category": "high"
+    },
+    {
+      "experiment": "confidence",
+      "method": "weighted index",
+      "condition": "no evidence",
+      "score": null,
+      "category": "insufficient"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": "2025-04-11T14:02:19.000000+00:00",
+    "hostname": "orchid-files",
+    "username": "analyst-4",
+    "category": "file",
+    "action": "file_access",
+    "source_ip": "192.0.2.23",
+    "file_path": "/orchid/finance/ledger.txt",
+    "flagged": true,
+    "severity": "high"
+  },
+  {
+    "timestamp": "2025-04-11T14:02:30.000000+00:00",
+    "hostname": "orchid-files",
+    "username": "analyst-4",
+    "category": "process",
+    "action": "process_start",
+    "source_ip": "192.0.2.23",
+    "process_name": "archive-viewer",
+    "flagged": true
+  },
+  {
+    "timestamp": "2025-04-11T14:02:19.000000+00:00",
+    "hostname": "orchid-files",
+    "username": "analyst-4",
+    "category": "file",
+    "action": "file_access",
+    "source_ip": "192.0.2.23",
+    "file_path": "/orchid/finance/ledger.txt",
+    "flagged": true,
+    "severity": "high"
+  },
+  {
+    "timestamp": "unavailable",
+    "action": "collection_gap"
+  }
+]

@@ -1,0 +1,463 @@
+{
+  "seeds": [
+    11,
+    23,
+    42,
+    71,
+    109
+  ],
+  "rows": [
+    {
+      "experiment": "detection",
+      "method": "platform rules",
+      "condition": "five original scenarios",
+      "precision": 0.8181818181818182,
+      "recall": 1.0,
+      "f1": 0.9,
+      "false_positive_rate": 0.043478260869565216,
+      "tp": 9,
+      "fp": 2,
+      "tn": 44,
+      "fn": 0,
+      "seed": 11
+    },
+    {
+      "experiment": "detection",
+      "method": "independent sources",
+      "condition": "five original scenarios",
+      "precision": 0.8888888888888888,
+      "recall": 0.8888888888888888,
+      "f1": 0.8888888888888888,
+      "false_positive_rate": 0.021739130434782608,
+      "tp": 8,
+      "fp": 1,
+      "tn": 45,
+      "fn": 1,
+      "seed": 11
+    },
+    {
+      "experiment": "correlation",
+      "method": "source-isolated",
+      "condition": "all records",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0,
+      "false_positive_rate": 0.0056179775280898875,
+      "tp": 0,
+      "fp": 90,
+      "tn": 15930,
+      "fn": 90,
+      "seed": 11
+    },
+    {
+      "experiment": "correlation",
+      "method": "time-only",
+      "condition": "all records",
+      "precision": 0.2,
+      "recall": 1.0,
+      "f1": 0.33333333333333337,
+      "false_positive_rate": 0.02247191011235955,
+      "tp": 90,
+      "fp": 360,
+      "tn": 15660,
+      "fn": 0,
+      "seed": 11
+    },
+    {
+      "experiment": "correlation",
+      "method": "evidence-aware",
+      "condition": "all records",
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0,
+      "seed": 11
+    },
+    {
+      "experiment": "detection",
+      "method": "platform rules",
+      "condition": "five original scenarios",
+      "precision": 0.8181818181818182,
+      "recall": 1.0,
+      "f1": 0.9,
+      "false_positive_rate": 0.043478260869565216,
+      "tp": 9,
+      "fp": 2,
+      "tn": 44,
+      "fn": 0,
+      "seed": 23
+    },
+    {
+      "experiment": "detection",
+      "method": "independent sources",
+      "condition": "five original scenarios",
+      "precision": 0.8888888888888888,
+      "recall": 0.8888888888888888,
+      "f1": 0.8888888888888888,
+      "false_positive_rate": 0.021739130434782608,
+      "tp": 8,
+      "fp": 1,
+      "tn": 45,
+      "fn": 1,
+      "seed": 23
+    },
+    {
+      "experiment": "correlation",
+      "method": "source-isolated",
+      "condition": "all records",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0,
+      "false_positive_rate": 0.0056179775280898875,
+      "tp": 0,
+      "fp": 90,
+      "tn": 15930,
+      "fn": 90,
+      "seed": 23
+    },
+    {
+      "experiment": "correlation",
+      "method": "time-only",
+      "condition": "all records",
+      "precision": 0.2,
+      "recall": 1.0,
+      "f1": 0.33333333333333337,
+      "false_positive_rate": 0.02247191011235955,
+      "tp": 90,
+      "fp": 360,
+      "tn": 15660,
+      "fn": 0,
+      "seed": 23
+    },
+    {
+      "experiment": "correlation",
+      "method": "evidence-aware",
+      "condition": "all records",
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0,
+      "seed": 23
+    },
+    {
+      "experiment": "detection",
+      "method": "platform rules",
+      "condition": "five original scenarios",
+      "precision": 0.8181818181818182,
+      "recall": 1.0,
+      "f1": 0.9,
+      "false_positive_rate": 0.043478260869565216,
+      "tp": 9,
+      "fp": 2,
+      "tn": 44,
+      "fn": 0,
+      "seed": 42
+    },
+    {
+      "experiment": "detection",
+      "method": "independent sources",
+      "condition": "five original scenarios",
+      "precision": 0.8888888888888888,
+      "recall": 0.8888888888888888,
+      "f1": 0.8888888888888888,
+      "false_positive_rate": 0.021739130434782608,
+      "tp": 8,
+      "fp": 1,
+      "tn": 45,
+      "fn": 1,
+      "seed": 42
+    },
+    {
+      "experiment": "correlation",
+      "method": "source-isolated",
+      "condition": "all records",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0,
+      "false_positive_rate": 0.0056179775280898875,
+      "tp": 0,
+      "fp": 90,
+      "tn": 15930,
+      "fn": 90,
+      "seed": 42
+    },
+    {
+      "experiment": "correlation",
+      "method": "time-only",
+      "condition": "all records",
+      "precision": 0.2,
+      "recall": 1.0,
+      "f1": 0.33333333333333337,
+      "false_positive_rate": 0.02247191011235955,
+      "tp": 90,
+      "fp": 360,
+      "tn": 15660,
+      "fn": 0,
+      "seed": 42
+    },
+    {
+      "experiment": "correlation",
+      "method": "evidence-aware",
+      "condition": "all records",
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0,
+      "seed": 42
+    },
+    {
+      "experiment": "detection",
+      "method": "platform rules",
+      "condition": "five original scenarios",
+      "precision": 0.8181818181818182,
+      "recall": 1.0,
+      "f1": 0.9,
+      "false_positive_rate": 0.043478260869565216,
+      "tp": 9,
+      "fp": 2,
+      "tn": 44,
+      "fn": 0,
+      "seed": 71
+    },
+    {
+      "experiment": "detection",
+      "method": "independent sources",
+      "condition": "five original scenarios",
+      "precision": 0.8888888888888888,
+      "recall": 0.8888888888888888,
+      "f1": 0.8888888888888888,
+      "false_positive_rate": 0.021739130434782608,
+      "tp": 8,
+      "fp": 1,
+      "tn": 45,
+      "fn": 1,
+      "seed": 71
+    },
+    {
+      "experiment": "correlation",
+      "method": "source-isolated",
+      "condition": "all records",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0,
+      "false_positive_rate": 0.0056179775280898875,
+      "tp": 0,
+      "fp": 90,
+      "tn": 15930,
+      "fn": 90,
+      "seed": 71
+    },
+    {
+      "experiment": "correlation",
+      "method": "time-only",
+      "condition": "all records",
+      "precision": 0.2,
+      "recall": 1.0,
+      "f1": 0.33333333333333337,
+      "false_positive_rate": 0.02247191011235955,
+      "tp": 90,
+      "fp": 360,
+      "tn": 15660,
+      "fn": 0,
+      "seed": 71
+    },
+    {
+      "experiment": "correlation",
+      "method": "evidence-aware",
+      "condition": "all records",
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0,
+      "seed": 71
+    },
+    {
+      "experiment": "detection",
+      "method": "platform rules",
+      "condition": "five original scenarios",
+      "precision": 0.8181818181818182,
+      "recall": 1.0,
+      "f1": 0.9,
+      "false_positive_rate": 0.043478260869565216,
+      "tp": 9,
+      "fp": 2,
+      "tn": 44,
+      "fn": 0,
+      "seed": 109
+    },
+    {
+      "experiment": "detection",
+      "method": "independent sources",
+      "condition": "five original scenarios",
+      "precision": 0.8888888888888888,
+      "recall": 0.8888888888888888,
+      "f1": 0.8888888888888888,
+      "false_positive_rate": 0.021739130434782608,
+      "tp": 8,
+      "fp": 1,
+      "tn": 45,
+      "fn": 1,
+      "seed": 109
+    },
+    {
+      "experiment": "correlation",
+      "method": "source-isolated",
+      "condition": "all records",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0,
+      "false_positive_rate": 0.0056179775280898875,
+      "tp": 0,
+      "fp": 90,
+      "tn": 15930,
+      "fn": 90,
+      "seed": 109
+    },
+    {
+      "experiment": "correlation",
+      "method": "time-only",
+      "condition": "all records",
+      "precision": 0.2,
+      "recall": 1.0,
+      "f1": 0.33333333333333337,
+      "false_positive_rate": 0.02247191011235955,
+      "tp": 90,
+      "fp": 360,
+      "tn": 15660,
+      "fn": 0,
+      "seed": 109
+    },
+    {
+      "experiment": "correlation",
+      "method": "evidence-aware",
+      "condition": "all records",
+      "precision": 0.6521739130434783,
+      "recall": 1.0,
+      "f1": 0.7894736842105263,
+      "false_positive_rate": 0.00299625468164794,
+      "tp": 90,
+      "fp": 48,
+      "tn": 15972,
+      "fn": 0,
+      "seed": 109
+    }
+  ],
+  "summary": [
+    {
+      "experiment": "correlation",
+      "method": "evidence-aware",
+      "precision": {
+        "mean": 0.6521739130434783,
+        "sample_sd": 0.0
+      },
+      "recall": {
+        "mean": 1.0,
+        "sample_sd": 0.0
+      },
+      "f1": {
+        "mean": 0.7894736842105263,
+        "sample_sd": 0.0
+      },
+      "false_positive_rate": {
+        "mean": 0.00299625468164794,
+        "sample_sd": 0.0
+      }
+    },
+    {
+      "experiment": "correlation",
+      "method": "source-isolated",
+      "precision": {
+        "mean": 0.0,
+        "sample_sd": 0.0
+      },
+      "recall": {
+        "mean": 0.0,
+        "sample_sd": 0.0
+      },
+      "f1": {
+        "mean": 0,
+        "sample_sd": 0.0
+      },
+      "false_positive_rate": {
+        "mean": 0.0056179775280898875,
+        "sample_sd": 0.0
+      }
+    },
+    {
+      "experiment": "correlation",
+      "method": "time-only",
+      "precision": {
+        "mean": 0.2,
+        "sample_sd": 0.0
+      },
+      "recall": {
+        "mean": 1.0,
+        "sample_sd": 0.0
+      },
+      "f1": {
+        "mean": 0.33333333333333337,
+        "sample_sd": 0.0
+      },
+      "false_positive_rate": {
+        "mean": 0.02247191011235955,
+        "sample_sd": 0.0
+      }
+    },
+    {
+      "experiment": "detection",
+      "method": "independent sources",
+      "precision": {
+        "mean": 0.8888888888888888,
+        "sample_sd": 0.0
+      },
+      "recall": {
+        "mean": 0.8888888888888888,
+        "sample_sd": 0.0
+      },
+      "f1": {
+        "mean": 0.8888888888888888,
+        "sample_sd": 0.0
+      },
+      "false_positive_rate": {
+        "mean": 0.021739130434782608,
+        "sample_sd": 0.0
+      }
+    },
+    {
+      "experiment": "detection",
+      "method": "platform rules",
+      "precision": {
+        "mean": 0.8181818181818182,
+        "sample_sd": 0.0
+      },
+      "recall": {
+        "mean": 1.0,
+        "sample_sd": 0.0
+      },
+      "f1": {
+        "mean": 0.9,
+        "sample_sd": 0.0
+      },
+      "false_positive_rate": {
+        "mean": 0.043478260869565216,
+        "sample_sd": 0.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "timestamp": "2025-04-10T14:02:20.000000+00:00",
+    "hostname": "orchid-relay",
+    "username": "analyst-3",
+    "category": "network",
+    "action": "connection",
+    "source_ip": "192.0.2.22",
+    "destination_ip": "203.0.113.44",
+    "bytes": 2400000,
+    "protocol": "TCP",
+    "destination_port": 443,
+    "flagged": true,
+    "severity": "high"
+  },
+  {
+    "timestamp": "2025-04-10T14:02:47.000000+00:00",
+    "hostname": "orchid-relay",
+    "username": "analyst-3",
+    "category": "network",
+    "action": "connection",
+    "source_ip": "192.0.2.22",
+    "destination_ip": "198.51.100.22",
+    "bytes": 320,
+    "protocol": "UDP",
+    "destination_port": 53,
+    "domain": "lookup.orchid.example"
+  },
+  {
+    "timestamp": "2025-04-10T14:02:20.000000+00:00",
+    "hostname": "orchid-relay",
+    "username": "analyst-3",
+    "category": "network",
+    "action": "connection",
+    "source_ip": "192.0.2.22",
+    "destination_ip": "203.0.113.44",
+    "bytes": 2400000,
+    "protocol": "TCP",
+    "destination_port": 443,
+    "flagged": true,
+    "severity": "high"
+  },
+  {
+    "timestamp": "unavailable",
+    "action": "collection_gap"
+  }
+]

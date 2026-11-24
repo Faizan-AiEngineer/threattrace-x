@@ -1,0 +1,33 @@
+[
+  {
+    "timestamp": "2025-04-09T14:02:18.000000+00:00",
+    "hostname": "orchid-directory",
+    "username": "analyst-2",
+    "category": "account",
+    "action": "privilege_change",
+    "source_ip": "192.0.2.21",
+    "severity": "high"
+  },
+  {
+    "timestamp": "2025-04-09T14:02:30.000000+00:00",
+    "hostname": "orchid-directory",
+    "username": "analyst-2",
+    "category": "service",
+    "action": "service_change",
+    "source_ip": "192.0.2.21",
+    "expected": true
+  },
+  {
+    "timestamp": "2025-04-09T14:02:18.000000+00:00",
+    "hostname": "orchid-directory",
+    "username": "analyst-2",
+    "category": "account",
+    "action": "privilege_change",
+    "source_ip": "192.0.2.21",
+    "severity": "high"
+  },
+  {
+    "timestamp": "unavailable",
+    "action": "collection_gap"
+  }
+]

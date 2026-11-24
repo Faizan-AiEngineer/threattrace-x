@@ -1,0 +1,34 @@
+[
+  {
+    "timestamp": "2025-04-12T14:05:00.000000+00:00",
+    "hostname": "orchid-maintenance",
+    "username": "analyst-5",
+    "category": "account",
+    "action": "privilege_change",
+    "source_ip": "192.0.2.24",
+    "expected": true
+  },
+  {
+    "timestamp": "2025-04-12T14:05:15.000000+00:00",
+    "hostname": "orchid-maintenance",
+    "username": "analyst-5",
+    "category": "authentication",
+    "action": "login",
+    "source_ip": "192.0.2.24",
+    "outcome": "success",
+    "expected": true
+  },
+  {
+    "timestamp": "2025-04-12T14:05:00.000000+00:00",
+    "hostname": "orchid-maintenance",
+    "username": "analyst-5",
+    "category": "account",
+    "action": "privilege_change",
+    "source_ip": "192.0.2.24",
+    "expected": true
+  },
+  {
+    "timestamp": "unavailable",
+    "action": "collection_gap"
+  }
+]

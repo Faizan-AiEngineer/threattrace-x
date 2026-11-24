@@ -1,0 +1,38 @@
+{
+  "seed": 42,
+  "cases": {
+    "1": {
+      "case": "Suspicious account access",
+      "rules": [
+        "auth_failures",
+        "auth_followup",
+        "admin_activity"
+      ]
+    },
+    "2": {
+      "case": "Unexpected privilege changes",
+      "rules": [
+        "privilege_change"
+      ]
+    },
+    "3": {
+      "case": "Unusual outbound communication",
+      "rules": [
+        "transfer",
+        "network_unusual",
+        "indicator"
+      ]
+    },
+    "4": {
+      "case": "Potential unauthorized file access",
+      "rules": [
+        "file_access",
+        "process_start"
+      ]
+    },
+    "5": {
+      "case": "Benign administrative activity",
+      "rules": []
+    }
+  }
+}
