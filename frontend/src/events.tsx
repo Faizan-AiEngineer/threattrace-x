@@ -321,23 +321,27 @@ export function EventsView({
       page: 1,
     }));
   }
+  const [showFilters, setShowFilters] = useState(false);
   const action = useAction();
   const update = (key: string, value: string) =>
     set((state) => ({ ...state, [key]: value, page: 1 }));
   const evidence = useData<Page<Evidence>>(
     item ? null : base(id) + "/evidence?limit=200",
   );
+  const { page, ...criteria } = filters;
+  const eventFilters = {
+    ...criteria,
+    start: utcInput(filters.start),
+    end: utcInput(filters.end),
+  };
   const state = useData<Page<Event>>(
     item
       ? null
       : base(id) +
           (timeline ? "/timeline" : "/events") +
-          query({
-            ...filters,
-            start: utcInput(filters.start),
-            end: utcInput(filters.end),
-          }),
+          query({ ...eventFilters, page }),
   );
+  const isFiltered = Object.values(eventFilters).some(Boolean);
   if (item) return <EventDetail id={id} item={item} timeline={timeline} />;
   return (
     <Panel
@@ -350,19 +354,39 @@ export function EventsView({
       action={
         timeline && (
           <button
-            disabled={action.busy}
+            disabled={action.busy || state.loading || Boolean(state.error)}
+            title="Download all matching events across pages"
             onClick={() =>
               void action.run(() =>
-                download(base(id) + "/reports/events.csv", "timeline.csv"),
+                download(
+                  base(id) + "/timeline/export" + query(eventFilters),
+                  "timeline.csv",
+                ),
               )
             }
           >
-            <Download size={16} /> Export timeline
+            <Download size={16} />{" "}
+            {isFiltered ? "Export filtered timeline" : "Export timeline"}
           </button>
         )
       }
     >
-      <div className="toolbar">
+      {timeline && (
+        <button
+          className="mobile-filter-toggle"
+          aria-controls="event-filters"
+          aria-expanded={showFilters}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          {showFilters ? "Hide filters" : "Show filters"}
+        </button>
+      )}
+      <div
+        id="event-filters"
+        className={
+          "toolbar" + (timeline && !showFilters ? " mobile-folded" : "")
+        }
+      >
         <label className="filter">
           <span>Search</span>
           <input
@@ -482,6 +506,34 @@ export function EventsView({
           </>
         )}
       </div>
+      <div className="result-summary" aria-live="polite">
+        {state.data && (
+          <span>
+            {state.data.total.toLocaleString()}{" "}
+            {isFiltered ? "matching" : "case"}{" "}
+            {state.data.total === 1 ? "event" : "events"}
+          </span>
+        )}
+        {isFiltered && (
+          <button
+            onClick={() =>
+              set({
+                q: "",
+                category: "",
+                severity: "",
+                evidence_id: "",
+                host: "",
+                account: "",
+                start: "",
+                end: "",
+                page: 1,
+              })
+            }
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
       <Feedback error={action.error} />
       <Load state={state}>
         {(data) => (
@@ -495,6 +547,12 @@ export function EventsView({
               />
             )}
             <Table
+              mobileCards
+              empty={
+                isFiltered
+                  ? "No events match the active filters."
+                  : "Import evidence to build the event timeline."
+              }
               headers={[
                 local ? "Time (local)" : "Time (UTC)",
                 "Event",

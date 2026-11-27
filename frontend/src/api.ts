@@ -2,6 +2,9 @@ export type User = {
   id: string;
   username: string;
   role: "administrator" | "investigator";
+  created_at: string;
+  disabled_at: string | null;
+  password_change_required: boolean;
 };
 export type Case = {
   id: string;
@@ -118,6 +121,7 @@ export type Note = {
 };
 export type Activity = {
   id: string;
+  case_id: string | null;
   actor: string;
   action: string;
   timestamp: string;

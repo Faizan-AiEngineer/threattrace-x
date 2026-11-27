@@ -11,14 +11,17 @@ import {
 import { api } from "./api";
 import type { Page } from "./api";
 
-export function useData<T>(path: string | null) {
+export function useData<T>(path: string | null, revision = 0) {
   const [state, setState] = useState<{
     path: string | null;
     data?: T;
     error?: string;
   }>({ path: null });
   const [version, setVersion] = useState(0);
-  const refresh = useCallback(() => setVersion((current) => current + 1), []);
+  const refresh = useCallback(() => {
+    setState((current) => (current.error ? { path: null } : current));
+    setVersion((current) => current + 1);
+  }, []);
   useEffect(() => {
     if (!path) return;
     let active = true;
@@ -33,7 +36,7 @@ export function useData<T>(path: string | null) {
     return () => {
       active = false;
     };
-  }, [path, version]);
+  }, [path, version, revision]);
   const current = state.path === path ? state : undefined;
   return {
     data: current?.data,
@@ -161,7 +164,7 @@ export function Load<T>({
   state,
   children,
 }: {
-  state: { loading: boolean; data?: T; error?: string };
+  state: { loading: boolean; data?: T; error?: string; refresh?: () => void };
   children: (value: T) => ReactNode;
 }) {
   if (state.loading)
@@ -171,24 +174,36 @@ export function Load<T>({
         Loading records…
       </div>
     );
-  if (state.error) return <Feedback error={state.error} />;
+  if (state.error)
+    return (
+      <div className="load-error">
+        <Feedback error={state.error} />
+        {state.refresh && <button onClick={state.refresh}>Try again</button>}
+      </div>
+    );
   return state.data === undefined ? null : children(state.data);
 }
 export function Table({
   headers,
   rows,
+  empty,
+  mobileCards = false,
 }: {
   headers: string[];
   rows: ReactNode[][];
+  empty?: string;
+  mobileCards?: boolean;
 }) {
-  if (!rows.length) return <Empty />;
+  if (!rows.length) return <Empty>{empty}</Empty>;
   return (
-    <div className="table-scroll">
-      <table>
+    <div className={"table-scroll" + (mobileCards ? " mobile-cards" : "")}>
+      <table role="table">
         <thead>
           <tr>
             {headers.map((header) => (
-              <th key={header}>{header}</th>
+              <th scope="col" key={header}>
+                {header}
+              </th>
             ))}
           </tr>
         </thead>
@@ -196,7 +211,9 @@ export function Table({
           {rows.map((row, index) => (
             <tr key={index}>
               {row.map((cell, offset) => (
-                <td key={offset}>{cell}</td>
+                <td key={offset} data-label={headers[offset]}>
+                  {cell}
+                </td>
               ))}
             </tr>
           ))}
@@ -296,7 +313,11 @@ export function Select({
   return (
     <label className="filter">
       <span>{title}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        aria-label={title}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
         {all && <option value="">All</option>}
         {choices.map((choice) => (
           <option key={choice} value={choice}>

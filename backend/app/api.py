@@ -19,13 +19,35 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from starlette.responses import FileResponse
 
-from . import analysis, db, parsers, reporting, schemas, security, settings, vault
+from . import (
+    analysis,
+    contracts,
+    db,
+    parsers,
+    reporting,
+    schemas,
+    security,
+    settings,
+    vault,
+)
 
 router = APIRouter(prefix="/api/v1")
 User = Annotated[dict, Depends(security.current)]
 Page = Annotated[int, Query(ge=1, le=100_000)]
 Limit = Annotated[int, Query(ge=1, le=200)]
 Search = Annotated[str, Query(max_length=200)]
+
+
+def download_docs(*media_types):
+    return {
+        200: {
+            "description": "File download",
+            "content": {
+                media: {"schema": {"type": "string", "format": "binary"}}
+                for media in media_types
+            },
+        }
+    }
 
 
 def page_of(connection, query, page, limit):
@@ -42,7 +64,17 @@ def page_of(connection, query, page, limit):
 
 
 def public_user(user):
-    return {key: user[key] for key in ("id", "username", "role", "created_at")}
+    return {
+        key: user[key]
+        for key in (
+            "id",
+            "username",
+            "role",
+            "created_at",
+            "disabled_at",
+            "password_change_required",
+        )
+    }
 
 
 def case_row(connection, table, case_id, item_id):
@@ -57,14 +89,24 @@ def edit(connection, table, item_id, **values):
     return db.one(connection, table, table.c.id == item_id)
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    tags=["System Health"],
+    description="Check the running API and database connection. Does not require a session.",
+    response_model=contracts.Health,
+)
 def health():
     with db.transaction(write=False) as connection:
         connection.execute(select(1))
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": settings.VERSION}
 
 
-@router.post("/auth/login")
+@router.post(
+    "/auth/login",
+    tags=["Authentication"],
+    description="Validate local credentials and establish an HTTP-only session cookie. Use only local demo credentials with Swagger Try it out.",
+    response_model=contracts.User,
+)
 def login(payload: schemas.Login, response: Response):
     user, token = security.login(payload.username, payload.password)
     response.set_cookie(
@@ -78,13 +120,23 @@ def login(payload: schemas.Login, response: Response):
     return public_user(user)
 
 
-@router.get("/auth/me")
-def me(user: User):
+@router.get(
+    "/auth/me",
+    tags=["Authentication"],
+    description="Return the current session's username, role and password-change requirement.",
+    response_model=contracts.User,
+)
+def me(user: security.SessionUser):
     return public_user(user)
 
 
-@router.post("/auth/logout", status_code=204)
-def logout(request: Request, response: Response, user: User):
+@router.post(
+    "/auth/logout",
+    status_code=204,
+    tags=["Authentication"],
+    description="Revoke this session on the server and clear its cookie.",
+)
+def logout(request: Request, response: Response, user: security.SessionUser):
     with db.transaction() as connection:
         connection.execute(
             delete(db.sessions).where(
@@ -95,7 +147,38 @@ def logout(request: Request, response: Response, user: User):
     response.delete_cookie(security.COOKIE)
 
 
-@router.get("/users")
+@router.post(
+    "/auth/password",
+    status_code=204,
+    tags=["Authentication"],
+    description="Replace the current password after verifying it. Revoke all sessions, including the current one. Available to users with a temporary password.",
+)
+def change_password(
+    payload: schemas.PasswordChange, response: Response, user: security.SessionUser
+):
+    with db.transaction() as connection:
+        account = security.lock_users(connection, user["id"]).get(user["id"])
+        security.require_password(account, payload.current_password)
+        if payload.current_password == payload.new_password:
+            raise HTTPException(422, "Choose a different password")
+        edit(
+            connection,
+            db.users,
+            user["id"],
+            password_hash=security.password_hash(payload.new_password),
+            password_change_required=False,
+        )
+        security.revoke_sessions(connection, user["id"])
+        db.record(connection, user["username"], "user_password_changed")
+    response.delete_cookie(security.COOKIE)
+
+
+@router.get(
+    "/users",
+    tags=["User and Access Management"],
+    description="List local accounts and their current status. Administrator only. Password hashes are never returned.",
+    response_model=list[contracts.User],
+)
 def users(user: User):
     security.admin(user)
     with db.transaction(write=False) as connection:
@@ -107,7 +190,13 @@ def users(user: User):
         ]
 
 
-@router.post("/users", status_code=201)
+@router.post(
+    "/users",
+    status_code=201,
+    tags=["User and Access Management"],
+    description="Create an investigator or administrator account. Administrator only.",
+    response_model=contracts.User,
+)
 def create_user(payload: schemas.UserCreate, user: User):
     security.admin(user)
     try:
@@ -123,7 +212,118 @@ def create_user(payload: schemas.UserCreate, user: User):
         raise HTTPException(409, "Username already exists") from error
 
 
-@router.get("/cases")
+USER_ACTIVITY = (
+    "user_created",
+    "user_disabled",
+    "user_enabled",
+    "user_password_reset",
+    "user_password_changed",
+    "case_access_put",
+    "case_access_delete",
+)
+
+
+@router.get(
+    "/users/audit",
+    tags=["User and Access Management"],
+    description="List access and account lifecycle audit entries, most recent first. Administrator only.",
+    response_model=contracts.Page[contracts.AuditRecord],
+)
+def user_audit(user: User, page: Page = 1, limit: Limit = 25):
+    security.admin(user)
+    with db.transaction(write=False) as connection:
+        return page_of(
+            connection,
+            select(db.audit)
+            .where(db.audit.c.action.in_(USER_ACTIVITY))
+            .order_by(db.audit.c.timestamp.desc(), db.audit.c.id),
+            page,
+            limit,
+        )
+
+
+def managed_user(connection, actor, target_id, password):
+    security.admin(actor)
+    if actor["id"] == target_id:
+        raise HTTPException(409, "Choose a different account")
+    accounts = security.lock_users(connection, actor["id"], target_id)
+    administrator = accounts.get(actor["id"])
+    security.require_password(administrator, password)
+    security.admin(administrator)
+    if administrator["password_change_required"]:
+        raise HTTPException(403, "Change your temporary password to continue")
+    target = accounts.get(target_id)
+    if not target:
+        raise HTTPException(404, "User not found")
+    return target
+
+
+@router.patch(
+    "/users/{user_id}/status",
+    tags=["User and Access Management"],
+    description="Disable or re-enable another local account. Requires the acting administrator's password. Disabling revokes all sessions and retains case history.",
+    response_model=contracts.User,
+)
+def user_status(user_id: str, payload: schemas.AccountStatus, user: User):
+    with db.transaction() as connection:
+        target = managed_user(connection, user, user_id, payload.administrator_password)
+        if bool(target["disabled_at"]) == payload.disabled:
+            return public_user(target)
+        changed = edit(
+            connection,
+            db.users,
+            user_id,
+            disabled_at=db.utc() if payload.disabled else None,
+        )
+        if payload.disabled:
+            security.revoke_sessions(connection, user_id)
+        db.record(
+            connection,
+            user["username"],
+            "user_disabled" if payload.disabled else "user_enabled",
+            detail=target["username"],
+        )
+        return public_user(changed)
+
+
+@router.post(
+    "/users/{user_id}/password",
+    status_code=204,
+    tags=["User and Access Management"],
+    description="Assign a temporary password to another account. Requires the acting administrator's password and revokes all of the target's sessions. The target must change the temporary password after signing in.",
+)
+def reset_password(user_id: str, payload: schemas.PasswordReset, user: User):
+    with db.transaction() as connection:
+        target = managed_user(connection, user, user_id, payload.administrator_password)
+        if (
+            payload.temporary_password == payload.administrator_password
+            or security.verify_password(
+                payload.temporary_password, target["password_hash"]
+            )
+        ):
+            raise HTTPException(422, "Choose a different temporary password")
+        edit(
+            connection,
+            db.users,
+            user_id,
+            password_hash=security.password_hash(payload.temporary_password),
+            password_change_required=True,
+        )
+        security.revoke_sessions(connection, user_id)
+        db.record(
+            connection,
+            user["username"],
+            "user_password_reset",
+            detail=target["username"],
+        )
+
+
+@router.get(
+    "/cases",
+    tags=["Investigation Cases"],
+    description="List accessible investigations with optional search, status, severity, sort and pagination.",
+    response_model=contracts.Page[contracts.Case],
+)
 def cases(
     user: User,
     page: Page = 1,
@@ -156,7 +356,13 @@ def cases(
         )
 
 
-@router.post("/cases", status_code=201)
+@router.post(
+    "/cases",
+    status_code=201,
+    tags=["Investigation Cases"],
+    description="Open an investigation owned by the current user.",
+    response_model=contracts.Case,
+)
 def create_case(payload: schemas.CaseInput, user: User):
     with db.transaction() as connection:
         case = db.add(
@@ -172,13 +378,23 @@ def create_case(payload: schemas.CaseInput, user: User):
         return case
 
 
-@router.get("/cases/{case_id}")
+@router.get(
+    "/cases/{case_id}",
+    tags=["Investigation Cases"],
+    description="Retrieve an accessible investigation's scope, owner and classification.",
+    response_model=contracts.Case,
+)
 def get_case(case_id: str, user: User):
     with db.transaction(write=False) as connection:
         return security.require_case(connection, user, case_id)
 
 
-@router.put("/cases/{case_id}")
+@router.put(
+    "/cases/{case_id}",
+    tags=["Investigation Cases"],
+    description="Update the investigation record. Archiving an investigation adds a custody entry to its evidence.",
+    response_model=contracts.Case,
+)
 def update_case(case_id: str, payload: schemas.CaseInput, user: User):
     with db.transaction() as connection:
         case = security.require_case(connection, user, case_id)
@@ -198,21 +414,90 @@ def update_case(case_id: str, payload: schemas.CaseInput, user: User):
         return result
 
 
-@router.put("/cases/{case_id}/access/{user_id}", status_code=204)
-@router.delete("/cases/{case_id}/access/{user_id}", status_code=204)
+def require_case_manager(connection, user, case_id):
+    case = security.require_case(connection, user, case_id)
+    if user["id"] != case["owner_id"]:
+        security.admin(user)
+    return case
+
+
+@router.get(
+    "/cases/{case_id}/access",
+    tags=["User and Access Management"],
+    description="List explicit grants and the case owner. Available to the owner and administrators.",
+    response_model=contracts.CaseGrants,
+)
+def case_grants(case_id: str, user: User, page: Page = 1, limit: Limit = 30):
+    with db.transaction(write=False) as connection:
+        case = require_case_manager(connection, user, case_id)
+        grant_rows = (
+            select(
+                db.grants.c.id,
+                db.grants.c.user_id,
+                db.users.c.username,
+                db.users.c.role,
+                db.users.c.disabled_at,
+                db.grants.c.created_at,
+            )
+            .join(db.users, db.users.c.id == db.grants.c.user_id)
+            .where(
+                db.grants.c.case_id == case_id,
+            )
+            .order_by(db.users.c.username)
+        )
+        owner = db.one(connection, db.users, db.users.c.id == case["owner_id"])
+        return {
+            "owner": public_user(owner),
+            **page_of(connection, grant_rows, page, limit),
+        }
+
+
+@router.put(
+    "/cases/{case_id}/access/{user_id}",
+    status_code=204,
+    tags=["User and Access Management"],
+    description="Grant explicit case access to an active investigator. Available to the owner and administrators. Repeating an existing grant has no effect.",
+)
+@router.delete(
+    "/cases/{case_id}/access/{user_id}",
+    status_code=204,
+    tags=["User and Access Management"],
+    description="Revoke an explicit grant. Ownership and administrator access are unaffected. Available to the owner and administrators.",
+)
 def case_access(case_id: str, user_id: str, user: User, request: Request):
     with db.transaction() as connection:
-        case = security.require_case(connection, user, case_id)
-        if user["id"] != case["owner_id"]:
-            security.admin(user)
+        case = require_case_manager(connection, user, case_id)
+        connection.execute(
+            select(db.cases.c.id).where(db.cases.c.id == case_id).with_for_update()
+        )
         recipient = db.one(connection, db.users, db.users.c.id == user_id)
         if not recipient:
             raise HTTPException(404, "User not found")
         match = (db.grants.c.case_id == case_id, db.grants.c.user_id == user_id)
+        existing = db.one(connection, db.grants, *match)
         if request.method == "DELETE":
+            if not existing:
+                return
             connection.execute(delete(db.grants).where(*match))
-        elif not db.one(connection, db.grants, *match):
-            db.add(connection, db.grants, case_id=case_id, user_id=user_id)
+        else:
+            if existing:
+                return
+            if recipient["disabled_at"]:
+                raise HTTPException(409, "Enable this account before granting access")
+            if (
+                recipient["id"] == case["owner_id"]
+                or recipient["role"] == "administrator"
+            ):
+                raise HTTPException(
+                    409, "This account already has access through ownership or role"
+                )
+            db.add(
+                connection,
+                db.grants,
+                case_id=case_id,
+                user_id=user_id,
+                created_at=db.utc(),
+            )
         db.record(
             connection,
             user["username"],
@@ -222,7 +507,13 @@ def case_access(case_id: str, user_id: str, user: User, request: Request):
         )
 
 
-@router.get("/cases/{case_id}/evidence")
+@router.get(
+    "/cases/{case_id}/evidence",
+    tags=["Digital Evidence and Chain of Custody"],
+    description="List evidence metadata with optional filename, hash prefix and integrity filters.",
+    response_model=contracts.Page[contracts.Evidence],
+    response_model_exclude_unset=True,
+)
 def evidence_list(
     case_id: str,
     user: User,
@@ -248,7 +539,14 @@ def evidence_list(
         )
 
 
-@router.post("/cases/{case_id}/evidence", status_code=201)
+@router.post(
+    "/cases/{case_id}/evidence",
+    status_code=201,
+    tags=["Digital Evidence and Chain of Custody"],
+    description="Upload original bytes and parse a working representation. For a demo, use a synthetic JSON file, format json, and source Synthetic training record.",
+    response_model=contracts.Evidence,
+    response_model_exclude_unset=True,
+)
 def evidence_upload(
     case_id: str,
     user: User,
@@ -275,7 +573,13 @@ def evidence_upload(
     )
 
 
-@router.get("/cases/{case_id}/evidence/{item_id}")
+@router.get(
+    "/cases/{case_id}/evidence/{item_id}",
+    tags=["Digital Evidence and Chain of Custody"],
+    description="Record metadata access in custody and return the evidence processing and verification history.",
+    response_model=contracts.EvidenceDetail,
+    response_model_exclude_unset=True,
+)
 def evidence_detail(case_id: str, item_id: str, user: User):
     with db.transaction() as connection:
         security.require_case(connection, user, case_id)
@@ -298,7 +602,12 @@ def evidence_detail(case_id: str, item_id: str, user: User):
         return item
 
 
-@router.post("/cases/{case_id}/evidence/{item_id}/verify")
+@router.post(
+    "/cases/{case_id}/evidence/{item_id}/verify",
+    tags=["Digital Evidence and Chain of Custody"],
+    description="Recompute SHA-256 for the preserved bytes and log the match or failure.",
+    response_model=contracts.Verification,
+)
 def verify(case_id: str, item_id: str, user: User):
     with db.transaction() as connection:
         security.require_case(connection, user, case_id)
@@ -306,7 +615,13 @@ def verify(case_id: str, item_id: str, user: User):
         return vault.verify(connection, item, user["username"])
 
 
-@router.post("/cases/{case_id}/evidence/{item_id}/download")
+@router.post(
+    "/cases/{case_id}/evidence/{item_id}/download",
+    tags=["Digital Evidence and Chain of Custody"],
+    description="Download the unmodified evidence file and record the request in custody.",
+    response_class=Response,
+    responses=download_docs("application/octet-stream"),
+)
 def original(case_id: str, item_id: str, user: User):
     with db.transaction() as connection:
         security.require_case(connection, user, case_id)
@@ -326,7 +641,12 @@ def original(case_id: str, item_id: str, user: User):
         )
 
 
-@router.get("/cases/{case_id}/evidence/{item_id}/custody")
+@router.get(
+    "/cases/{case_id}/evidence/{item_id}/custody",
+    tags=["Digital Evidence and Chain of Custody"],
+    description="List ordered custody records and verify every hash link, the record count and the stored head.",
+    response_model=contracts.CustodyPage,
+)
 def custody(case_id: str, item_id: str, user: User, page: Page = 1, limit: Limit = 50):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
@@ -342,7 +662,12 @@ def custody(case_id: str, item_id: str, user: User, page: Page = 1, limit: Limit
         }
 
 
-@router.post("/cases/{case_id}/evidence/{item_id}/custody")
+@router.post(
+    "/cases/{case_id}/evidence/{item_id}/custody",
+    tags=["Digital Evidence and Chain of Custody"],
+    description="Transfer custody to an active user with access to this case. Requires a reason and the existing custodian or administrator.",
+    response_model=contracts.CustodyRecord,
+)
 def transfer(case_id: str, item_id: str, payload: schemas.CustodyAction, user: User):
     with db.transaction() as connection:
         security.require_case(connection, user, case_id)
@@ -354,8 +679,8 @@ def transfer(case_id: str, item_id: str, payload: schemas.CustodyAction, user: U
             db.users,
             db.users.c.username == (payload.recipient or "").lower(),
         )
-        if not target:
-            raise HTTPException(422, "A registered recipient is required")
+        if not target or target["disabled_at"]:
+            raise HTTPException(422, "An active registered recipient is required")
         security.require_case(connection, target, case_id)
         edit(connection, db.evidence, item_id, custodian=target["username"])
         return vault.custody_append(
@@ -367,29 +692,39 @@ def transfer(case_id: str, item_id: str, payload: schemas.CustodyAction, user: U
         )
 
 
-@router.get("/cases/{case_id}/events")
-@router.get("/cases/{case_id}/timeline")
-def event_list(
-    case_id: str,
-    user: User,
-    page: Page = 1,
-    limit: Limit = 50,
-    q: Search = "",
-    category: Search = "",
-    severity: schemas.Severity | None = None,
-    host: Search = "",
-    account: Search = "",
-    evidence_id: Search = "",
-    start: Search = "",
-    end: Search = "",
-):
+class EventFilters:
+    def __init__(
+        self,
+        q: Search = "",
+        category: Search = "",
+        severity: schemas.Severity | None = None,
+        host: Search = "",
+        account: Search = "",
+        evidence_id: Search = "",
+        start: Search = "",
+        end: Search = "",
+    ):
+        self.q = q
+        self.category = category
+        self.severity = severity
+        self.host = host
+        self.account = account
+        self.evidence_id = evidence_id
+        self.start = start
+        self.end = end
+
+
+TimelineFilters = Annotated[EventFilters, Depends()]
+
+
+def ordered_events(case_id, filters: EventFilters):
     columns = db.events.c
     query = select(db.events).where(columns.case_id == case_id)
-    if q:
+    if filters.q:
         query = query.where(
             or_(
                 *(
-                    column.icontains(q, autoescape=True)
+                    column.icontains(filters.q, autoescape=True)
                     for column in (
                         columns.action,
                         columns.hostname,
@@ -400,15 +735,15 @@ def event_list(
             )
         )
     for column, value in (
-        (columns.category, category),
-        (columns.severity, severity),
-        (columns.hostname, host),
-        (columns.username, account),
-        (columns.evidence_id, evidence_id),
+        (columns.category, filters.category),
+        (columns.severity, filters.severity),
+        (columns.hostname, filters.host),
+        (columns.username, filters.account),
+        (columns.evidence_id, filters.evidence_id),
     ):
         if value:
             query = query.where(column == value.casefold())
-    for bound, lower in ((start, True), (end, False)):
+    for bound, lower in ((filters.start, True), (filters.end, False)):
         if bound:
             _, normalized, _ = parsers.timestamp(bound)
             if not normalized:
@@ -418,17 +753,66 @@ def event_list(
                 if lower
                 else columns.timestamp <= normalized
             )
+    return query.order_by(columns.timestamp.is_(None), columns.timestamp, columns.id)
+
+
+@router.get(
+    "/cases/{case_id}/events",
+    tags=["Events and Timeline"],
+    description="List normalized events, including source references and original timestamps. Search or filter by source, category, severity, exact host, account and UTC boundaries.",
+    response_model=contracts.Page[contracts.Event],
+)
+@router.get(
+    "/cases/{case_id}/timeline",
+    tags=["Events and Timeline"],
+    description="List filtered case events in UTC order. Undated records appear last when time bounds are absent.",
+    response_model=contracts.Page[contracts.Event],
+)
+def event_list(
+    case_id: str,
+    user: User,
+    filters: TimelineFilters,
+    page: Page = 1,
+    limit: Limit = 50,
+):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
-        return page_of(
+        return page_of(connection, ordered_events(case_id, filters), page, limit)
+
+
+@router.post(
+    "/cases/{case_id}/timeline/export",
+    tags=["Events and Timeline"],
+    description="Download all matching timeline rows across pages. Applies the same filters as list timeline and records the export and its SHA-256.",
+    response_class=Response,
+    responses=download_docs("text/csv"),
+)
+def timeline_export(case_id: str, user: User, filters: TimelineFilters):
+    """Download all matching events in timeline order, independently of pagination."""
+    with db.transaction() as connection:
+        security.require_case(connection, user, case_id)
+        rows = connection.execute(ordered_events(case_id, filters)).mappings().all()
+        content = reporting.render({"timeline": rows}, "events.csv")
+        fields = ", ".join(name for name, value in vars(filters).items() if value)
+        detail = f"events.csv · {len(rows)} events · filters: {fields or 'none'}"
+        record_export(
             connection,
-            query.order_by(columns.timestamp.is_(None), columns.timestamp, columns.id),
-            page,
-            limit,
+            case_id,
+            user,
+            "events.csv",
+            content,
+            sorted({row["evidence_id"] for row in rows}),
+            detail=detail,
         )
+    return report_response(content, "events.csv", f"threattrace-{case_id}-timeline.csv")
 
 
-@router.get("/cases/{case_id}/timeline/extent")
+@router.get(
+    "/cases/{case_id}/timeline/extent",
+    tags=["Events and Timeline"],
+    description="Return the earliest and latest known timestamps and counts of dated and undated events.",
+    response_model=contracts.TimelineExtent,
+)
 def timeline_extent(case_id: str, user: User):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
@@ -460,7 +844,12 @@ def linked_indicators(case_id):
     )
 
 
-@router.get("/cases/{case_id}/events/{item_id}")
+@router.get(
+    "/cases/{case_id}/events/{item_id}",
+    tags=["Events and Timeline"],
+    description="Inspect a normalized event, its source record, related events, findings and notes. Records evidence access.",
+    response_model=contracts.EventDetail,
+)
 def event_detail(case_id: str, item_id: str, user: User):
     with db.transaction() as connection:
         security.require_case(connection, user, case_id)
@@ -506,14 +895,24 @@ def event_detail(case_id: str, item_id: str, user: User):
         return row
 
 
-@router.post("/cases/{case_id}/analyze")
+@router.post(
+    "/cases/{case_id}/analyze",
+    tags=["Detection and Findings"],
+    description="Run the case's enabled rules, indicator matching and correlation over normalized events. Evidence with failed integrity is excluded.",
+    response_model=contracts.AnalysisResult,
+)
 def run_analysis(case_id: str, payload: schemas.Analyze, user: User):
     with db.transaction() as connection:
         security.require_case(connection, user, case_id)
         return analysis.analyze(connection, case_id, user["username"], payload.window)
 
 
-@router.get("/cases/{case_id}/findings")
+@router.get(
+    "/cases/{case_id}/findings",
+    tags=["Detection and Findings"],
+    description="List current findings and backing event and evidence IDs. Include previous analysis results using the history filter.",
+    response_model=contracts.Page[contracts.Finding],
+)
 def findings(
     case_id: str,
     user: User,
@@ -541,7 +940,12 @@ def findings(
         return result
 
 
-@router.get("/cases/{case_id}/findings/{item_id}")
+@router.get(
+    "/cases/{case_id}/findings/{item_id}",
+    tags=["Detection and Findings"],
+    description="Retrieve one finding, confidence components, limitations and supporting records.",
+    response_model=contracts.Finding,
+)
 def finding(case_id: str, item_id: str, user: User):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
@@ -550,7 +954,12 @@ def finding(case_id: str, item_id: str, user: User):
         )
 
 
-@router.patch("/cases/{case_id}/findings/{item_id}")
+@router.patch(
+    "/cases/{case_id}/findings/{item_id}",
+    tags=["Detection and Findings"],
+    description="Record a finding assessment and reason, with an optional confidence override.",
+    response_model=contracts.Finding,
+)
 def review_finding(
     case_id: str, item_id: str, payload: schemas.FindingReview, user: User
 ):
@@ -575,13 +984,23 @@ def review_finding(
         return analysis.enrich_finding(connection, row)
 
 
-@router.get("/rules")
+@router.get(
+    "/rules",
+    tags=["Detection and Findings"],
+    description="List configured evidence and event detection rules with their current thresholds and evaluation windows.",
+    response_model=list[contracts.Rule],
+)
 def rules(user: User):
     with db.transaction(write=False) as connection:
         return analysis.rule_config(connection)
 
 
-@router.put("/rules/{rule_id}")
+@router.put(
+    "/rules/{rule_id}",
+    tags=["Detection and Findings"],
+    description="Update activation and settings for an existing detection rule. Administrator only.",
+    response_model=contracts.Rule,
+)
 def save_rule(rule_id: str, payload: schemas.Rule, user: User):
     security.admin(user)
     if rule_id not in analysis.RULES:
@@ -599,7 +1018,25 @@ def save_rule(rule_id: str, payload: schemas.Rule, user: User):
         )
 
 
-@router.get("/cases/{case_id}/correlation")
+DEVICE_FIELDS = ("device_id", "device_name")
+
+
+def graph_entities(event):
+    devices = {
+        ("device", str(value).strip()[:256])
+        for field in DEVICE_FIELDS
+        if isinstance(value := event["metadata"].get(field), (str, int))
+        and str(value).strip()
+    }
+    return sorted(analysis.entity_keys(event) | devices)
+
+
+@router.get(
+    "/cases/{case_id}/correlation",
+    tags=["Correlation and Network Forensics"],
+    description="Return a bounded subset of active, observed and inferred event relationships, linked entities and evidence filenames.",
+    response_model=contracts.Graph,
+)
 def graph(
     case_id: str,
     user: User,
@@ -614,6 +1051,7 @@ def graph(
         )
         if relationship:
             edge_query = edge_query.where(db.relationships.c.kind == relationship)
+        keys = None
         if kind:
             keys = (
                 select(db.entity_events.c.event_id)
@@ -627,6 +1065,16 @@ def graph(
             elif kind == "indicator":
                 keys = linked_indicators(case_id).with_only_columns(
                     db.matches.c.event_id
+                )
+            elif kind == "device":
+                keys = select(db.events.c.id).where(
+                    db.events.c.case_id == case_id,
+                    or_(
+                        *(
+                            db.events.c.metadata[field].as_string().is_not(None)
+                            for field in DEVICE_FIELDS
+                        )
+                    ),
                 )
             edge_query = edge_query.where(
                 or_(
@@ -645,14 +1093,32 @@ def graph(
         limited = len(edges) > limit
         edges = edges[:limit]
         ids = {edge[key] for edge in edges for key in ("source_id", "target_id")}
+        event_query = select(db.events).where(db.events.c.case_id == case_id)
+        if ids:
+            event_query = event_query.where(db.events.c.id.in_(ids))
+        elif relationship:
+            event_query = event_query.where(False)
+        elif keys is not None:
+            event_query = event_query.where(db.events.c.id.in_(keys))
         rows = [
             dict(row)
             for row in connection.execute(
-                select(db.events)
-                .where(db.events.c.case_id == case_id, db.events.c.id.in_(ids))
-                .order_by(db.events.c.timestamp, db.events.c.id)
+                event_query.order_by(
+                    db.events.c.timestamp.is_(None),
+                    db.events.c.timestamp,
+                    db.events.c.id,
+                ).limit(max(2 * limit, 12) if ids else limit)
             ).mappings()
         ]
+        ids = {row["id"] for row in rows}
+        evidence_ids = {row["evidence_id"] for row in rows}
+        sources = dict(
+            connection.execute(
+                select(db.evidence.c.id, db.evidence.c.filename).where(
+                    db.evidence.c.case_id == case_id, db.evidence.c.id.in_(evidence_ids)
+                )
+            ).all()
+        )
         attachments = [
             {"event_id": event_id, "id": item_id, "label": name, "kind": category}
             for category, links, column in (
@@ -665,16 +1131,20 @@ def graph(
         ]
         return {
             "attachments": attachments,
+            "sources": sources,
             "nodes": [
                 {
                     "id": r["id"],
                     "action": r["action"],
+                    "category": r["category"],
+                    "severity": r["severity"],
+                    "outcome": r["outcome"],
                     "hostname": r["hostname"],
                     "username": r["username"],
                     "evidence_id": r["evidence_id"],
                     "source_ref": r["source_ref"],
                     "timestamp": r["timestamp"],
-                    "entities": sorted(analysis.entity_keys(r)),
+                    "entities": graph_entities(r),
                 }
                 for r in rows
             ],
@@ -683,7 +1153,12 @@ def graph(
         }
 
 
-@router.patch("/cases/{case_id}/correlation/{item_id}")
+@router.patch(
+    "/cases/{case_id}/correlation/{item_id}",
+    tags=["Correlation and Network Forensics"],
+    description="Record an analyst's determination and reason for an observed or inferred relationship.",
+    response_model=contracts.Relationship,
+)
 def review_graph(
     case_id: str, item_id: str, payload: schemas.RelationshipReview, user: User
 ):
@@ -697,7 +1172,12 @@ def review_graph(
         return result
 
 
-@router.get("/cases/{case_id}/entities")
+@router.get(
+    "/cases/{case_id}/entities",
+    tags=["Correlation and Network Forensics"],
+    description="List entities derived from normalized records and link them to supporting events.",
+    response_model=contracts.Page[contracts.Entity],
+)
 def entities(
     case_id: str,
     user: User,
@@ -730,7 +1210,12 @@ def entities(
         return result
 
 
-@router.get("/cases/{case_id}/network")
+@router.get(
+    "/cases/{case_id}/network",
+    tags=["Correlation and Network Forensics"],
+    description="Aggregate imported network records by flow, address, port, protocol and DNS name. No live traffic is captured.",
+    response_model=contracts.Network,
+)
 def network(case_id: str, user: User):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
@@ -753,7 +1238,12 @@ def network(case_id: str, user: User):
         return result
 
 
-@router.get("/cases/{case_id}/intelligence")
+@router.get(
+    "/cases/{case_id}/intelligence",
+    tags=["Threat Intelligence"],
+    description="List case-local indicators and exact-match counts, with up to 30 linked events per indicator.",
+    response_model=contracts.Page[contracts.IndicatorMatches],
+)
 def indicators(case_id: str, user: User, page: Page = 1, limit: Limit = 50):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
@@ -809,7 +1299,13 @@ def save_indicator(connection, case_id, payload):
     )
 
 
-@router.post("/cases/{case_id}/intelligence", status_code=201)
+@router.post(
+    "/cases/{case_id}/intelligence",
+    status_code=201,
+    tags=["Threat Intelligence"],
+    description="Register a case-local indicator and optional timezone-aware expiry. Analysis computes exact matches.",
+    response_model=contracts.Indicator,
+)
 def add_indicator(case_id: str, payload: schemas.Indicator, user: User):
     with db.transaction() as connection:
         security.require_case(connection, user, case_id)
@@ -820,7 +1316,13 @@ def add_indicator(case_id: str, payload: schemas.Indicator, user: User):
         return result
 
 
-@router.post("/cases/{case_id}/intelligence/import", status_code=201)
+@router.post(
+    "/cases/{case_id}/intelligence/import",
+    status_code=201,
+    tags=["Threat Intelligence"],
+    description="Load a synthetic JSON array or CSV of case-local indicators. Use a reserved value such as example.invalid for demonstration.",
+    response_model=contracts.IndicatorImport,
+)
 def indicator_import(case_id: str, user: User, file: Annotated[UploadFile, File()]):
     from pydantic import ValidationError
 
@@ -864,7 +1366,12 @@ def indicator_import(case_id: str, user: User, file: Annotated[UploadFile, File(
         return {"imported": len(rows)}
 
 
-@router.get("/cases/{case_id}/notes")
+@router.get(
+    "/cases/{case_id}/notes",
+    tags=["Investigation Cases"],
+    description="List investigator notes and event annotations for a case.",
+    response_model=contracts.Page[contracts.Note],
+)
 def notes(case_id: str, user: User, page: Page = 1, limit: Limit = 50):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
@@ -878,7 +1385,13 @@ def notes(case_id: str, user: User, page: Page = 1, limit: Limit = 50):
         )
 
 
-@router.post("/cases/{case_id}/notes", status_code=201)
+@router.post(
+    "/cases/{case_id}/notes",
+    status_code=201,
+    tags=["Investigation Cases"],
+    description="Add a case note or an annotation tied to one case event.",
+    response_model=contracts.Note,
+)
 def add_note(case_id: str, payload: schemas.Note, user: User):
     with db.transaction() as connection:
         security.require_case(connection, user, case_id)
@@ -896,7 +1409,12 @@ def add_note(case_id: str, payload: schemas.Note, user: User):
         return result
 
 
-@router.get("/cases/{case_id}/activity")
+@router.get(
+    "/cases/{case_id}/activity",
+    tags=["Investigation Cases"],
+    description="List the case audit trail, newest first.",
+    response_model=contracts.Page[contracts.AuditRecord],
+)
 def activity(case_id: str, user: User, page: Page = 1, limit: Limit = 25):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
@@ -910,7 +1428,12 @@ def activity(case_id: str, user: User, page: Page = 1, limit: Limit = 25):
         )
 
 
-@router.get("/cases/{case_id}/reports")
+@router.get(
+    "/cases/{case_id}/reports",
+    tags=["Reporting and Research"],
+    description="List prior export formats, timestamps, actors and digests.",
+    response_model=contracts.Page[contracts.Report],
+)
 def reports(case_id: str, user: User, page: Page = 1, limit: Limit = 25):
     with db.transaction(write=False) as connection:
         security.require_case(connection, user, case_id)
@@ -924,37 +1447,28 @@ def reports(case_id: str, user: User, page: Page = 1, limit: Limit = 25):
         )
 
 
-@router.post("/cases/{case_id}/reports/{format}")
-def report(
-    case_id: str,
-    format: Literal["pdf", "html", "json", "events.csv", "findings.csv"],
-    user: User,
+def record_export(
+    connection, case_id, user, format, content, evidence_ids, *, detail, timestamp=None
 ):
     from hashlib import sha256
 
-    with db.transaction() as connection:
-        case = security.require_case(connection, user, case_id)
-        snapshot = reporting.snapshot(connection, case)
-        content = reporting.render(snapshot, format)
-        db.add(
-            connection,
-            db.reports,
-            case_id=case_id,
-            actor=user["username"],
-            timestamp=snapshot["generated_at"],
-            format=format,
-            sha256=sha256(content).hexdigest(),
-        )
-        for item in snapshot["evidence"]:
-            vault.custody_append(
-                connection, item["id"], user["username"], "report_exported", format
-            )
-        db.record(connection, user["username"], "report_exported", case_id, format)
-    name = (
-        f"threattrace-{case_id}.{format}"
-        if "." not in format
-        else f"threattrace-{case_id}-{format}"
+    db.add(
+        connection,
+        db.reports,
+        case_id=case_id,
+        actor=user["username"],
+        timestamp=timestamp or db.utc(),
+        format=format,
+        sha256=sha256(content).hexdigest(),
     )
+    for item_id in evidence_ids:
+        vault.custody_append(
+            connection, item_id, user["username"], "report_exported", detail
+        )
+    db.record(connection, user["username"], "report_exported", case_id, detail)
+
+
+def report_response(content, format, name):
     return Response(
         content,
         media_type=reporting.MIME[format],
@@ -965,7 +1479,48 @@ def report(
     )
 
 
-@router.get("/dashboard")
+@router.post(
+    "/cases/{case_id}/reports/{format}",
+    tags=["Reporting and Research"],
+    description="Generate a full case snapshot in the selected format and record the export's SHA-256 and custody entries. Use Timeline export for a filtered event CSV.",
+    response_class=Response,
+    responses=download_docs(
+        "application/pdf", "text/html", "application/json", "text/csv"
+    ),
+)
+def report(
+    case_id: str,
+    format: Literal["pdf", "html", "json", "events.csv", "findings.csv"],
+    user: User,
+):
+    with db.transaction() as connection:
+        case = security.require_case(connection, user, case_id)
+        snapshot = reporting.snapshot(connection, case)
+        content = reporting.render(snapshot, format)
+        record_export(
+            connection,
+            case_id,
+            user,
+            format,
+            content,
+            [item["id"] for item in snapshot["evidence"]],
+            detail=format,
+            timestamp=snapshot["generated_at"],
+        )
+    name = (
+        f"threattrace-{case_id}.{format}"
+        if "." not in format
+        else f"threattrace-{case_id}-{format}"
+    )
+    return report_response(content, format, name)
+
+
+@router.get(
+    "/dashboard",
+    tags=["System Health"],
+    description="Summarize events, active cases, evidence integrity and findings across investigations visible to the signed-in user.",
+    response_model=contracts.Dashboard,
+)
 def dashboard(user: User):
     accessible = select(db.cases.c.id).where(security.scope(user))
     active = db.cases.c.status.in_(("open", "under_investigation", "awaiting_evidence"))
@@ -1060,7 +1615,13 @@ def dashboard(user: User):
         }
 
 
-@router.get("/research")
+@router.get(
+    "/research",
+    tags=["Reporting and Research"],
+    description="Return the stored synthetic benchmark run, conditions, results and stated limitations.",
+    response_model=contracts.Research | contracts.ResearchUnavailable,
+    response_model_exclude_unset=True,
+)
 def research(user: User):
     path = settings.ROOT / "research" / "results" / "results.json"
     if not path.is_file():
@@ -1068,7 +1629,27 @@ def research(user: User):
     return {"available": True, **json.loads(path.read_text(encoding="utf-8"))}
 
 
-@router.get("/research/{format}")
+@router.get(
+    "/research/multi-seed",
+    tags=["Reporting and Research"],
+    description="Return the original stored multi-seed benchmark results and recorded summary statistics.",
+    response_model=contracts.MultiSeed | contracts.ResearchUnavailable,
+    response_model_exclude_unset=True,
+)
+def research_multi_seed(user: User):
+    path = settings.ROOT / "research" / "results" / "multi-seed.json"
+    if not path.is_file():
+        return {"available": False}
+    return {"available": True, **json.loads(path.read_text(encoding="utf-8"))}
+
+
+@router.get(
+    "/research/{format}",
+    tags=["Reporting and Research"],
+    description="Download the saved benchmark artifact in JSON or CSV without recomputing the experiment.",
+    response_class=Response,
+    responses=download_docs("application/json", "text/csv"),
+)
 def research_export(format: Literal["json", "csv"], user: User):
     path = settings.ROOT / "research" / "results" / f"results.{format}"
     if not path.is_file():

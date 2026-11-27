@@ -11,3 +11,5 @@ Environment variables are read on startup. The root .env.example lists the local
 - TTX_SETUP_PASSWORD is an optional noninteractive seeding input. The setup CLI prompts securely when the variable is absent.
 
 SQLite is the supported database. A DSN hook exists for future database profiles. PostgreSQL and remote deployment have not been verified.
+
+The synthetic demo uses a separate local SQLite profile. Use the dedicated demo launcher for interactive setup. Direct seed automation must set TTX_DATA_DIR to an isolated directory and supply its own temporary password. Keep TTX_SETUP_PASSWORD out of source control, shared environments, and shell histories.

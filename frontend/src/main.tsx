@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -26,7 +26,8 @@ import { api } from "./api";
 import type { Case, Page, User } from "./api";
 import { Empty, Feedback, formData, Load, useAction, useData } from "./ui";
 import { Overview } from "./overview";
-import { CaseForm, CaseList, Workspace } from "./workspace";
+import { CaseForm, caseTabs, CaseList, link, Workspace } from "./workspace";
+import { PasswordChange } from "./access";
 import { Research, RuleSettings, SettingsView } from "./operations";
 import "./style.css";
 
@@ -114,46 +115,110 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
     </main>
   );
 }
-function CaseSelector({ tab, user }: { tab: string; user: User }) {
-  const state = useData<Page<Case>>("/cases?limit=200");
-  const choices = state.data?.items ?? [];
-  const [selected, setSelected] = useState("");
-  const active = choices.find((item) => item.id === selected) ?? choices[0];
+const workTitles: Record<string, string> = {
+  ...Object.fromEntries(
+    nav
+      .filter(([, url]) => url.startsWith("/work/"))
+      .map(([title, url]) => [url.split("/").at(-1), title]),
+  ),
+  findings: "Findings",
+};
+
+type CurrentCase = Pick<Case, "id" | "title">;
+
+function storedCase(userId: string): CurrentCase | undefined {
+  try {
+    const saved = JSON.parse(
+      sessionStorage.getItem("ttx-case:" + userId) ?? "null",
+    );
+    if (
+      saved &&
+      typeof saved.id === "string" &&
+      typeof saved.title === "string"
+    )
+      return { id: saved.id, title: saved.title };
+  } catch {
+    // A browser can restrict session storage.
+  }
+}
+
+function CaseSelector({
+  tab,
+  user,
+  active,
+  onSelect,
+}: {
+  tab: string;
+  user: User;
+  active?: CurrentCase;
+  onSelect: (value: CurrentCase) => void;
+}) {
+  const [page, setPage] = useState(1);
+  const state = useData<Page<Case>>("/cases?limit=50&sort=title&page=" + page);
   return (
-    <Load state={state}>
-      {() =>
-        active ? (
-          <>
-            <div className="case-selector">
-              <label>
-                Investigation
-                <select
-                  value={active.id}
-                  onChange={(event) => setSelected(event.target.value)}
+    <>
+      <Load state={state}>
+        {(data) => (
+          <div className="case-selector">
+            <label htmlFor="workspace-case">Active investigation</label>
+            <select
+              id="workspace-case"
+              value={active?.id ?? ""}
+              onChange={(event) => {
+                const choice = data.items.find(
+                  ({ id }) => id === event.target.value,
+                );
+                if (choice) onSelect(choice);
+              }}
+            >
+              <option value="" disabled>
+                Choose an investigation
+              </option>
+              {active && !data.items.some(({ id }) => id === active.id) && (
+                <option value={active.id}>{active.title}</option>
+              )}
+              {data.items.map(({ id, title }) => (
+                <option key={id} value={id}>
+                  {title}
+                </option>
+              ))}
+            </select>
+            {data.total > data.limit && (
+              <div className="actions">
+                <button disabled={page === 1} onClick={() => setPage(page - 1)}>
+                  Previous cases
+                </button>
+                <button
+                  disabled={page * data.limit >= data.total}
+                  onClick={() => setPage(page + 1)}
                 >
-                  {choices.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <Workspace
-              key={active.id + tab}
-              id={active.id}
-              tab={tab}
-              user={user}
-            />
-          </>
-        ) : (
+                  More cases
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </Load>
+      {active ? (
+        <Workspace
+          key={active.id + "/" + tab}
+          id={active.id}
+          tab={tab}
+          user={user}
+          onOpen={onSelect}
+        />
+      ) : (
+        state.data && (
           <Empty>
-            <a href="#/cases/new">Create an investigation</a> to open this
-            workspace.
+            {state.data.total ? (
+              "Select the investigation you want to work on."
+            ) : (
+              <a href="#/cases/new">Create an investigation</a>
+            )}
           </Empty>
         )
-      }
-    </Load>
+      )}
+    </>
   );
 }
 function App() {
@@ -161,6 +226,28 @@ function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [menu, setMenu] = useState(false);
   const [sessionError, setSessionError] = useState("");
+  const [caseByUser, setCaseByUser] = useState<Record<string, CurrentCase>>({});
+  const userId = user?.id;
+  const onSelect = useCallback(
+    ({ id, title }: CurrentCase) => {
+      if (!userId) return;
+      setCaseByUser((previous) => {
+        const current = previous[userId];
+        return current?.id === id && current.title === title
+          ? previous
+          : { ...previous, [userId]: { id, title } };
+      });
+      try {
+        sessionStorage.setItem(
+          "ttx-case:" + userId,
+          JSON.stringify({ id, title }),
+        );
+      } catch {
+        /* Keep the current investigation in memory. */
+      }
+    },
+    [userId],
+  );
   const auth = useAction();
   useEffect(() => {
     api<User>("/auth/me").then(setUser, (error) => {
@@ -173,9 +260,14 @@ function App() {
       window.scrollTo(0, 0);
     };
     const expired = () => setUser(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
     window.addEventListener("hashchange", navigate);
     window.addEventListener("ttx-session-expired", expired);
     return () => {
+      window.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("hashchange", navigate);
       window.removeEventListener("ttx-session-expired", expired);
     };
@@ -198,12 +290,53 @@ function App() {
         />
       </>
     );
+  if (user.password_change_required)
+    return (
+      <main className="login">
+        <section className="login-card">
+          <Brand />
+          <h1>Change temporary password</h1>
+          <p>
+            Set a new password to open the workspace. You will sign in again
+            afterward.
+          </p>
+          <PasswordChange temporary onChanged={() => setUser(null)} />
+          <button
+            onClick={() =>
+              void auth.run(async () => {
+                await api("/auth/logout", "POST");
+                setUser(null);
+              })
+            }
+          >
+            Sign out
+          </button>
+          <Feedback error={auth.error} />
+        </section>
+      </main>
+    );
   const segments = route.split("/").filter(Boolean);
   const [area, id, tab, item] = segments;
+  const active = caseByUser[user.id] ?? storedCase(user.id);
+  const caseRoute = area === "cases" && id && id !== "new";
+  const workTab = area === "work" ? id : caseRoute ? tab : undefined;
+  const workPath = workTab && "/work/" + workTab;
   const selected =
-    nav.find(([, url]) => url === route) ??
-    (area === "cases" ? nav[1] : nav[0]);
-  const title = selected[0];
+    nav.find(([, url]) => url === route || url === workPath) ??
+    (area === "cases" ? nav[1] : undefined);
+  const title =
+    area === "work"
+      ? (workTitles[id] ?? "Workspace unavailable")
+      : id === "new" && area === "cases"
+        ? "New investigation"
+        : caseRoute && tab
+          ? tab === "edit"
+            ? "Edit investigation"
+            : (workTitles[tab] ??
+              caseTabs.find(([key]) => key === tab)?.[1] ??
+              "Workspace unavailable")
+          : (selected?.[0] ?? "Workspace unavailable");
+  const caseCrumb = caseRoute && active?.id === id && tab ? active : undefined;
   let content;
   if (area === "cases" && id === "new") content = <CaseForm user={user} />;
   else if (area === "cases" && id)
@@ -214,11 +347,20 @@ function App() {
         tab={tab || "overview"}
         item={item}
         user={user}
+        onOpen={onSelect}
       />
     );
   else if (area === "cases") content = <CaseList />;
-  else if (area === "work" && id)
-    content = <CaseSelector key={route} tab={id} user={user} />;
+  else if (area === "work" && id && workTitles[id])
+    content = (
+      <CaseSelector
+        key={route}
+        tab={id}
+        user={user}
+        active={active}
+        onSelect={onSelect}
+      />
+    );
   else if (area === "rules") content = <RuleSettings user={user} />;
   else if (area === "research") content = <Research />;
   else if (area === "settings") content = <SettingsView user={user} />;
@@ -250,7 +392,10 @@ function App() {
           onClick={() => setMenu(false)}
         />
       )}
-      <aside className={"sidebar " + (menu ? "open" : "")}>
+      <aside
+        id="workspace-sidebar"
+        className={"sidebar " + (menu ? "open" : "")}
+      >
         <Brand />
         <nav aria-label="Primary navigation">
           <div className="nav-caption">WORKSPACE</div>
@@ -261,8 +406,9 @@ function App() {
               )}
               <a
                 href={"#" + url}
-                aria-current={selected[1] === url ? "page" : undefined}
-                className={selected[1] === url ? "active" : ""}
+                onClick={() => setMenu(false)}
+                aria-current={selected?.[1] === url ? "page" : undefined}
+                className={selected?.[1] === url ? "active" : ""}
               >
                 <Icon size={17} />
                 <span>{name}</span>
@@ -282,18 +428,45 @@ function App() {
               className="icon-button mobile-menu"
               aria-label="Open navigation"
               aria-expanded={menu}
+              aria-controls="workspace-sidebar"
               onClick={() => setMenu(!menu)}
             >
               <Menu size={21} />
             </button>
-            <span className="crumb-root">Workspace</span>
-            <ChevronRight className="crumb-root" size={14} />
-            <strong>{title}</strong>
+            <nav className="breadcrumb-trail" aria-label="Breadcrumb">
+              {area === "cases" && id ? (
+                <a href="#/cases" className="crumb-root">
+                  Investigations
+                </a>
+              ) : (
+                <span className="crumb-root">Workspace</span>
+              )}
+              <ChevronRight
+                className="crumb-root"
+                size={14}
+                aria-hidden="true"
+              />
+              {caseCrumb && (
+                <>
+                  <a className="crumb-case" href={link(caseCrumb.id)}>
+                    {caseCrumb.title}
+                  </a>
+                  <ChevronRight
+                    className="crumb-case"
+                    size={14}
+                    aria-hidden="true"
+                  />
+                </>
+              )}
+              <strong aria-current="page">
+                {caseRoute && !tab && active?.id === id ? active.title : title}
+              </strong>
+            </nav>
           </div>
           <div className="account">
             <a
               className="icon-button alert-button"
-              href="#/work/findings"
+              href={caseRoute ? link(id, "findings") : "#/work/findings"}
               aria-label="Open findings"
             >
               <BellDot size={18} />

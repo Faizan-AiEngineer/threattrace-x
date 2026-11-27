@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ArrowLeft,
+  Copy,
   Download,
   Fingerprint,
   Plus,
@@ -125,6 +126,7 @@ function EvidenceDetail({ id, item }: { id: string; item: string }) {
   const path = base(id) + "/evidence/" + item;
   const state = useData<Evidence>(path);
   const action = useAction();
+  const copy = useAction();
   const [verification, setVerification] = useState<{
     status: string;
     expected_hash: string;
@@ -144,8 +146,22 @@ function EvidenceDetail({ id, item }: { id: string; item: string }) {
               action={<Badge value={data.integrity} />}
             >
               <div className="panel-body">
+                <div className="evidence-hash">
+                  <span>Recorded SHA-256</span>
+                  <code>{data.sha256}</code>
+                  <button
+                    onClick={() =>
+                      void copy.run(
+                        () => navigator.clipboard.writeText(data.sha256),
+                        "SHA-256 copied.",
+                      )
+                    }
+                  >
+                    <Copy size={15} /> Copy SHA-256
+                  </button>
+                </div>
+                <Feedback error={copy.error} message={copy.message} />
                 {definition([
-                  ["SHA-256", <code>{data.sha256}</code>],
                   ["Evidence ID", data.id],
                   ["Format", data.format.toUpperCase()],
                   ["Size", bytes(data.size)],
@@ -384,6 +400,8 @@ function CustodyDetail({ id, item }: { id: string; item: string }) {
               }
             />
             <Table
+              mobileCards
+              empty="No custody records exist for this evidence item."
               headers={[
                 "Sequence",
                 "Action",
@@ -393,8 +411,8 @@ function CustodyDetail({ id, item }: { id: string; item: string }) {
                 "Record hash",
               ]}
               rows={value.items.map((row) => [
-                row.sequence,
-                label(row.action),
+                <span className="custody-sequence">{row.sequence}</span>,
+                <strong>{label(row.action)}</strong>,
                 row.actor,
                 date(row.timestamp),
                 row.reason,
@@ -402,9 +420,11 @@ function CustodyDetail({ id, item }: { id: string; item: string }) {
                   <summary>
                     <code>{row.record_hash.slice(0, 12)}…</code>
                   </summary>
-                  <code>{row.record_hash}</code>
+                  <code className="custody-hash">{row.record_hash}</code>
                   <p>Previous</p>
-                  <code>{row.previous_hash ?? "—"}</code>
+                  <code className="custody-hash">
+                    {row.previous_hash ?? "—"}
+                  </code>
                 </details>,
               ])}
             />
@@ -423,7 +443,7 @@ export function CustodyView({ id, item }: { id: string; item?: string }) {
   return (
     <Panel
       title="Chain of custody"
-      hint="Hash-linked evidence operations and verification"
+      hint="Verify the hash-linked history of an original evidence item."
     >
       <Load state={evidence}>
         {() =>

@@ -21,11 +21,12 @@ try {
         Invoke-Checked tar.exe -xzf $archive -C $directory
         Remove-Item -LiteralPath $archive
     }
+    Invoke-Checked $Python -m pip install --upgrade 'pip>=26.2'
     Invoke-Checked $Python -m pip install -r backend/requirements-dev.txt
     Invoke-Checked $Python -m pip check
     Push-Location frontend
     try { Invoke-Npm ci --no-fund }
     finally { Pop-Location }
-    Write-Host "Python environment on D: $Python"
-    Write-Host "npm cache on D: $env:npm_config_cache"
+    Write-Host "Project Python environment: $Python"
+    Write-Host "Project npm cache: $env:npm_config_cache"
 } finally { Pop-Location }

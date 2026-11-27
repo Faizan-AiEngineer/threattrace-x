@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 const user = process.env.TTX_TEST_USER || "demo-investigator";
 const password = process.env.TTX_TEST_PASSWORD;
@@ -106,9 +107,32 @@ test("timeline filtering and accessible graph selection", async ({ page }) => {
   await node.press("Enter");
   await expect(page.getByRole("link", { name: "Inspect event" })).toBeVisible();
   await page.getByRole("button", { name: "Zoom in graph" }).click();
+  await expect(page.getByLabel("Graph zoom")).toHaveText("125%");
+  const canvas = page.getByLabel("Event correlation diagram");
+  const originalViewBox = await canvas.getAttribute("viewBox");
+  await canvas.press("ArrowRight");
+  await expect(canvas).not.toHaveAttribute("viewBox", originalViewBox!);
+  await page.getByRole("button", { name: "Fit graph" }).click();
+  await expect(page.getByLabel("Graph zoom")).toHaveText("100%");
+  await page
+    .getByLabel("Relationship", { exact: true })
+    .selectOption("inferred");
   await expect(
-    page.locator('svg[aria-label="Event correlation diagram"]'),
-  ).toHaveAttribute("style", "width: 125%; min-width: 560px;");
+    page.getByRole("button", { name: /Select inferred relationship/ }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Select observed relationship/ }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: /Select inferred relationship/ })
+    .first()
+    .press("Enter");
+  await expect(
+    page
+      .getByRole("complementary", { name: "Graph selection details" })
+      .getByRole("heading", { name: "Supporting evidence" }),
+  ).toBeVisible();
+  await page.getByLabel("Relationship", { exact: true }).selectOption("");
   await page.getByLabel("Graph view").selectOption("entities");
   await page.getByLabel("Entity type").selectOption("finding");
   await expect(
@@ -180,4 +204,185 @@ test("unauthorized rule controls, loading and error states", async ({
   await expect(
     page.getByRole("button", { name: "Save", exact: true }),
   ).toHaveCount(0);
+});
+
+test("filtered timeline export matches the displayed case and filters", async ({
+  page,
+}) => {
+  const register = page.getByRole("navigation", { name: "Primary navigation" });
+  await register
+    .getByRole("link", { name: "Investigations", exact: true })
+    .click();
+  await page
+    .getByRole("link", { name: "Open Suspicious account access", exact: true })
+    .click();
+  await page.getByRole("link", { name: "Timeline", exact: true }).click();
+  await page.getByLabel("Category").selectOption("account");
+  await expect(
+    page.getByText("1 matching event", { exact: true }),
+  ).toBeVisible();
+  const [csv] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export filtered timeline" }).click(),
+  ]);
+  const file = await readFile((await csv.path())!, "utf-8");
+  expect(file.trim().split(/\r?\n/)).toHaveLength(2);
+  expect(file).toContain("admin_activity");
+  expect(file).not.toContain(",login,");
+});
+
+test("workspaces retain the selected investigation until explicitly changed", async ({
+  page,
+}) => {
+  const sidebar = page.getByRole("navigation", { name: "Primary navigation" });
+  const heading = (title: string) =>
+    page.getByRole("heading", { name: title, exact: true });
+  const breadcrumb = page.getByRole("navigation", { name: "Breadcrumb" });
+  await sidebar.getByRole("link", { name: "Network Forensics" }).click();
+  const selector = page.getByLabel("Active investigation");
+  await expect(selector).toHaveValue("");
+  await expect(
+    page.getByText("Select the investigation you want to work on."),
+  ).toBeVisible();
+  await selector.selectOption({ label: "Unusual outbound communication" });
+  const key = await selector.inputValue();
+  await expect(heading("Unusual outbound communication")).toBeVisible();
+  for (const workspace of [
+    "Threat Intelligence",
+    "Evidence Vault",
+    "Incident Timeline",
+    "Correlation Graph",
+    "Chain of Custody",
+    "Reports",
+  ]) {
+    await sidebar.getByRole("link", { name: workspace, exact: true }).click();
+    await expect(selector).toHaveValue(key);
+    await expect(heading("Unusual outbound communication")).toBeVisible();
+    await expect(
+      breadcrumb.getByText(workspace, { exact: true }),
+    ).toBeVisible();
+  }
+  await page.getByRole("link", { name: "Open findings" }).click();
+  await expect(breadcrumb.getByText("Findings", { exact: true })).toBeVisible();
+  await expect(selector).toHaveValue(key);
+  await page.reload();
+  await expect(selector).toHaveValue(key);
+  await sidebar
+    .getByRole("link", { name: "Investigations", exact: true })
+    .click();
+  await page
+    .getByRole("link", { name: "Open Suspicious account access", exact: true })
+    .click();
+  await expect(heading("Suspicious account access")).toBeVisible();
+  await page.getByRole("link", { name: "Open findings" }).click();
+  await expect(
+    breadcrumb.getByText("Suspicious account access", { exact: true }),
+  ).toBeVisible();
+  await expect(breadcrumb.getByText("Findings", { exact: true })).toBeVisible();
+  await sidebar.getByRole("link", { name: "Network Forensics" }).click();
+  await expect(heading("Suspicious account access")).toBeVisible();
+  await expect(selector).not.toHaveValue(key);
+});
+
+test("access settings show explicit grants and require a password change after reset", async ({
+  page,
+  browser,
+}) => {
+  const account = "access-analyst-" + Date.now();
+  const replacement = "synthetic-replacement-7719";
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.getByLabel("New username").fill(account);
+  await page.getByLabel("Initial password").fill(password!);
+  await page.getByRole("button", { name: "Create local account" }).click();
+  await expect(page.getByText("Local account created.")).toBeVisible();
+  const investigatorRow = page
+    .getByRole("row")
+    .filter({ hasText: account })
+    .first();
+  const grantPanel = page
+    .getByRole("heading", { name: "Investigation access" })
+    .locator("xpath=ancestor::section[1]");
+  await grantPanel
+    .getByLabel("Investigation", { exact: true })
+    .selectOption({ label: "Suspicious account access" });
+  await grantPanel
+    .getByLabel("Grant access to")
+    .selectOption({ label: account });
+  await grantPanel
+    .getByRole("button", { name: "Grant access", exact: true })
+    .click();
+  const grantRow = grantPanel.getByRole("row").filter({ hasText: account });
+  await expect(grantRow).toBeVisible();
+  await grantPanel
+    .getByRole("row")
+    .filter({ hasText: account })
+    .getByRole("button", { name: "Revoke access" })
+    .click();
+  await page.getByRole("button", { name: "Confirm revoke" }).click();
+  await expect(grantRow).toHaveCount(0);
+  await investigatorRow.getByRole("button", { name: "Reset password" }).click();
+  await page.getByLabel("Replacement temporary password").fill(replacement);
+  await page.getByLabel("Your administrator password").fill(password!);
+  await page.getByRole("button", { name: "Confirm password reset" }).click();
+  await expect(
+    investigatorRow.getByText("Password reset pending"),
+  ).toBeVisible();
+  const second = await browser.newContext();
+  try {
+    const investigator = await second.newPage();
+    await investigator.goto(new URL("/", page.url()).href);
+    await investigator.getByLabel("Username").fill(account);
+    await investigator
+      .getByLabel("Password", { exact: true })
+      .fill(replacement);
+    await investigator.getByRole("button", { name: "Sign in" }).click();
+    await expect(
+      investigator.getByRole("heading", { name: "Change temporary password" }),
+    ).toBeVisible();
+    await investigator.getByLabel("Temporary password").fill(replacement);
+    await investigator
+      .getByLabel("New password", { exact: true })
+      .fill(password!);
+    await investigator.getByLabel("Confirm new password").fill(password!);
+    await investigator
+      .getByRole("button", { name: "Save new password" })
+      .click();
+    await expect(
+      investigator.getByRole("heading", { name: "Sign in" }),
+    ).toBeVisible();
+    await investigator.getByLabel("Username").fill(account);
+    await investigator.getByLabel("Password", { exact: true }).fill(password!);
+    await investigator.getByRole("button", { name: "Sign in" }).click();
+    await expect(
+      investigator.getByRole("heading", { name: "Investigation overview" }),
+    ).toBeVisible();
+
+    await investigatorRow
+      .getByRole("button", { name: "Disable", exact: true })
+      .click();
+    await page.getByLabel("Your administrator password").fill(password!);
+    await page
+      .getByRole("button", { name: "Disable account", exact: true })
+      .click();
+    await expect(
+      investigatorRow.getByText("Disabled", { exact: true }),
+    ).toBeVisible();
+    await investigator.reload();
+    await expect(
+      investigator.getByRole("heading", { name: "Sign in" }),
+    ).toBeVisible();
+    await investigatorRow
+      .getByRole("button", { name: "Enable", exact: true })
+      .click();
+    await page.getByLabel("Your administrator password").fill(password!);
+    await page
+      .getByRole("button", { name: "Enable account", exact: true })
+      .click();
+    await expect(
+      investigatorRow.getByText("Active", { exact: true }),
+    ).toBeVisible();
+  } finally {
+    await second.close();
+  }
 });

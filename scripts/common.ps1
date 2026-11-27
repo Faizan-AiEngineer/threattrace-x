@@ -1,7 +1,7 @@
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$ToolsRoot = 'D:\ThreatTraceTools'
+$ToolsRoot = Join-Path $ProjectRoot 'runtime\tools'
 $env:TEMP = Join-Path $ToolsRoot 'temp'
 $env:TMP = $env:TEMP
 $env:PIP_CACHE_DIR = Join-Path $ToolsRoot 'cache\pip'

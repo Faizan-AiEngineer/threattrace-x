@@ -4,7 +4,7 @@
 1. Create a case with a title, scope, investigator, severity and classification. Administrators manage local users and case grants in Settings.
 2. In Evidence, select an explicit source type and describe collection context. For timestamps without an offset, supply the source offset in minutes and any independently established clock correction in seconds.
 3. Verify the bytes before relying on the evidence. Review parser errors and trace suspicious event records to the original evidence anchor.
-4. In Timeline, use UTC or local display. Use the UTC From and Through filters to narrow the interval. Missing or uncertain timestamps appear after dated events when no range is applied.
+4. In Timeline, use UTC or local display. Use the UTC From and Through filters to narrow the interval. Missing or uncertain timestamps appear after dated events when no range is applied. Export from Timeline to include the active filters across every page. Reports also offers a full-case timeline CSV.
 5. Run analysis to update findings, candidate relationships, case entities and local indicator matches. Review inferred relationships and findings with a reason. Record annotations directly on events or in case notes.
 6. Open the custody record to verify its head and sequence or transfer custody to another user with case access.
 7. Use Reports for a local export. The report snapshot identifies the source and scope of the recorded conclusions.

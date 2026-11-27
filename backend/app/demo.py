@@ -12,8 +12,9 @@ from scapy.layers.dns import DNS, DNSQR
 from scapy.layers.inet import IP, UDP
 from scapy.layers.l2 import Ether
 from scapy.utils import wrpcap
+from sqlalchemy import select
 
-from . import analysis, db, schemas, security, vault
+from . import analysis, db, schemas, security, settings, vault
 
 BASE = datetime(2025, 4, 8, 14, 0, tzinfo=UTC)
 SCENARIOS = (
@@ -164,12 +165,34 @@ def generate(root, seed):
 def seed_demo(username, password, seed):
     from .api import save_indicator
 
+    settings.validate_demo_configuration()
     with db.transaction() as connection:
         user = db.one(connection, db.users, db.users.c.username == username)
+        if user is not None and not security.verify_password(
+            password, user["password_hash"]
+        ):
+            raise SystemExit("Existing account password did not match.")
+        if not settings.DEMO_PROFILE.is_file():
+            existing = connection.scalars(select(db.users.c.id)).all()
+            cases = connection.execute(
+                select(db.cases.c.owner_id, db.cases.c.synthetic)
+            ).all()
+            legacy_demo = (
+                user is not None
+                and existing == [user["id"]]
+                and cases
+                and all(
+                    owner_id == user["id"] and synthetic
+                    for owner_id, synthetic in cases
+                )
+            )
+            if (existing or cases) and not legacy_demo:
+                raise SystemExit(
+                    "Choose a separate empty data directory for the synthetic demo."
+                )
+            settings.DEMO_PROFILE.touch(exist_ok=True)
         if user is None:
             user = security.create_user(connection, username, password, "administrator")
-        elif not security.verify_password(password, user["password_hash"]):
-            raise SystemExit("Existing account password did not match.")
     for index, (title, classification, severity) in enumerate(SCENARIOS):
         case_id = analysis.key_for("demo", username, str(seed), str(index))[:36]
         with db.transaction() as connection:
@@ -268,6 +291,15 @@ def main():
     if args.action == "generate":
         generate(args.output, args.seed)
         return
+    if args.action == "seed":
+        if not os.environ.get("TTX_DATA_DIR"):
+            raise SystemExit(
+                "Set TTX_DATA_DIR to a dedicated demo directory or run scripts/start-demo.ps1."
+            )
+        try:
+            settings.validate_demo_configuration()
+        except ValueError as error:
+            raise SystemExit(str(error)) from error
     password = os.environ.get("TTX_SETUP_PASSWORD") or getpass.getpass(
         "Local account password (12+ characters): "
     )

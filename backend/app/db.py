@@ -18,6 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     event,
+    false,
     insert,
     select,
 )
@@ -62,6 +63,8 @@ users = table(
     field("password_hash"),
     field("role"),
     field("created_at"),
+    field("disabled_at", required=False),
+    field("password_change_required", Boolean, server_default=false()),
 )
 sessions = table(
     "sessions", ref("user_id", "users.id", index=True), field("expires_at", index=True)
@@ -83,6 +86,7 @@ grants = table(
     "case_access",
     ref("case_id", "cases.id"),
     ref("user_id", "users.id", index=True),
+    field("created_at", required=False),
     UniqueConstraint("case_id", "user_id"),
 )
 evidence = table(

@@ -1,7 +1,7 @@
 
 # ThreatTrace X development report
 
-**Version 0.1.0** · **24 November 2026** · **D:\Github Projects\ThreatTrace-X**
+**Version 0.1.0** · **24 November 2026**
 
 ## Project status
 
@@ -37,18 +37,11 @@ The 100,000-event benchmark measured 85.90 seconds, including 20.05 seconds for 
 | C: free | 4.58 GiB | 4.58 GiB |
 | D: free | 97.42 GiB | 97.41 GiB |
 
-The project used approximately **300 MiB**, including **110 MiB** for the Python environment and **179 MiB** for npm dependencies. The Python package cache used 43 MiB, the npm cache used 308 MiB, and the Python bytecode cache used 74 MiB under D:\ThreatTraceTools. These are logical file sizes. The project, test data, dependency environments, and configured caches were placed on D:. Free-space snapshots include activity from the rest of the workstation.
+The project used approximately **300 MiB**, including **110 MiB** for the Python environment and **179 MiB** for npm dependencies. The Python package cache used 43 MiB, the npm cache used 308 MiB, and the Python bytecode cache used 74 MiB in the initial tool directory. These are logical file sizes. The project, test data, dependency environments, and configured caches were placed on D:. Free-space snapshots include activity from the rest of the workstation.
 
 ## Application access
 
-```powershell
-Set-Location -LiteralPath 'D:\Github Projects\ThreatTrace-X'
-.\scripts\setup.ps1
-.\scripts\seed-demo.ps1
-.\scripts\start-all.ps1
-```
-
-Seed the demo with a password of at least 12 characters and sign in as **demo-investigator**. Open the [workbench](http://127.0.0.1:5173/), [backend](http://127.0.0.1:8000/) or [API documentation](http://127.0.0.1:8000/docs). The test runner launches separate temporary verification services and stops them at the end.
+For current installation and the isolated demo launcher, follow the [project README](README.md#installation-and-local-demonstration). The test runner launches separate temporary verification services.
 
 ## Publication readiness
 

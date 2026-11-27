@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { GraphView } from "./graph";
+import { useEffect, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -33,7 +34,6 @@ import {
 import { EvidenceView, CustodyView } from "./evidence";
 import { EventsView, FindingsView, NotesView } from "./events";
 import {
-  GraphView,
   EntitiesView,
   IntelligenceView,
   NetworkView,
@@ -250,7 +250,7 @@ export function CaseForm({ user, existing }: { user: User; existing?: Case }) {
   );
 }
 
-const tabs = [
+export const caseTabs = [
   ["overview", "Overview"],
   ["evidence", "Evidence"],
   ["events", "Events"],
@@ -269,7 +269,7 @@ function CaseOverview({ item }: { item: Case }) {
   const audit = useData<Page<Audit>>(base(item.id) + "/activity?limit=8");
   return (
     <div className="chart-grid split">
-      <Panel title="Investigation scope" hint={item.id}>
+      <Panel title="Investigation scope">
         <div className="panel-body">
           <p className="scope">
             {item.description || "No narrative scope recorded."}
@@ -278,6 +278,8 @@ function CaseOverview({ item }: { item: Case }) {
             ["Investigator", item.investigator],
             ["Classification", item.classification],
             ["Opened (UTC)", date(item.created_at)],
+            ["Updated (UTC)", date(item.updated_at)],
+            ["Case reference", <code>{item.id}</code>],
             ["Status", <Badge value={item.status} />],
             ["Severity", <Badge value={item.severity} />],
           ])}
@@ -323,13 +325,18 @@ export function Workspace({
   tab,
   item,
   user,
+  onOpen,
 }: {
   id: string;
   tab: string;
   item?: string;
   user: User;
+  onOpen: (value: Case) => void;
 }) {
   const current = useData<Case>(base(id));
+  useEffect(() => {
+    if (current.data) onOpen(current.data);
+  }, [current.data, onOpen]);
   const action = useAction();
   const [windowSeconds, setWindow] = useState(300);
   const [revision, setRevision] = useState(0);
@@ -384,19 +391,24 @@ export function Workspace({
                     }, "Analysis completed. Findings and relationships are current.");
                   }}
                 >
-                  <label className="sr-only" htmlFor="analysis-window">
-                    Correlation window in seconds
+                  <label
+                    className="analysis-window-label"
+                    htmlFor="analysis-window"
+                  >
+                    Correlation window (s)
+                    <input
+                      id="analysis-window"
+                      title="Correlation window in seconds"
+                      type="number"
+                      min={1}
+                      max={86400}
+                      required
+                      value={windowSeconds}
+                      onChange={(event) =>
+                        setWindow(Number(event.target.value))
+                      }
+                    />
                   </label>
-                  <input
-                    id="analysis-window"
-                    title="Correlation window in seconds"
-                    type="number"
-                    min={1}
-                    max={86400}
-                    required
-                    value={windowSeconds}
-                    onChange={(event) => setWindow(Number(event.target.value))}
-                  />
                   <button className="primary" disabled={action.busy}>
                     <Briefcase size={16} /> Run analysis
                   </button>
@@ -404,8 +416,24 @@ export function Workspace({
               </div>
             </div>
             <Feedback error={action.error} message={action.message} />
+            <div className="case-view-picker">
+              <label htmlFor="case-view">Investigation view</label>
+              <select
+                id="case-view"
+                value={tab}
+                onChange={(event) => {
+                  window.location.hash = link(id, event.target.value);
+                }}
+              >
+                {caseTabs.map(([key, name]) => (
+                  <option key={key} value={key}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <nav className="tabs" aria-label="Investigation views">
-              {tabs.map(([key, name]) => (
+              {caseTabs.map(([key, name]) => (
                 <a
                   key={key}
                   aria-current={tab === key ? "page" : undefined}

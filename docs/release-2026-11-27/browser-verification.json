@@ -1,0 +1,174 @@
+{
+  "browser": "158.0.8127.88",
+  "origin": "http://127.0.0.1:4173",
+  "viewport": [
+    1920,
+    1080
+  ],
+  "screenshots": [
+    "01-security-overview.png",
+    "02-investigation-case.png",
+    "03-evidence-integrity.png",
+    "04-chain-of-custody.png",
+    "05-incident-timeline.png",
+    "06-correlation-graph.png",
+    "07-threat-intelligence.png",
+    "08-finding-confidence.png",
+    "09-research-benchmarks.png",
+    "10-investigation-report.png"
+  ],
+  "workspaceChecks": [
+    "Sign in",
+    "Investigation overview",
+    "Case register",
+    "New investigation",
+    "Edit investigation",
+    "Investigation scope",
+    "Evidence vault",
+    "identity-export.json",
+    "Chain of custody",
+    "Normalized events",
+    "Event details",
+    "Incident timeline",
+    "Correlation graph",
+    "Associated entities",
+    "Investigator notes",
+    "Protocol distribution",
+    "Threat intelligence",
+    "Findings",
+    "Confidence assessment",
+    "Rule catalog",
+    "Research Lab",
+    "Generate report",
+    "Local accounts",
+    "Threat Intelligence shortcut",
+    "Evidence Vault shortcut",
+    "Incident Timeline shortcut",
+    "Correlation Graph shortcut",
+    "Chain of Custody shortcut",
+    "Reports shortcut",
+    "Findings shortcut"
+  ],
+  "mobileChecks": [
+    {
+      "title": "Investigation overview",
+      "width": 390,
+      "documentWidth": 375
+    },
+    {
+      "title": "Case register",
+      "width": 390,
+      "documentWidth": 390
+    },
+    {
+      "title": "Investigation scope",
+      "width": 390,
+      "documentWidth": 375
+    },
+    {
+      "title": "identity-export.json",
+      "width": 390,
+      "documentWidth": 375
+    },
+    {
+      "title": "Incident timeline",
+      "width": 390,
+      "documentWidth": 390
+    },
+    {
+      "title": "Correlation graph",
+      "width": 390,
+      "documentWidth": 375
+    },
+    {
+      "title": "Protocol distribution",
+      "width": 390,
+      "documentWidth": 375
+    },
+    {
+      "title": "Research Lab",
+      "width": 390,
+      "documentWidth": 390
+    },
+    {
+      "title": "Local accounts",
+      "width": 390,
+      "documentWidth": 375
+    },
+    {
+      "title": "Investigation overview",
+      "width": 768,
+      "documentWidth": 753
+    },
+    {
+      "title": "Case register",
+      "width": 768,
+      "documentWidth": 768
+    },
+    {
+      "title": "Investigation scope",
+      "width": 768,
+      "documentWidth": 768
+    },
+    {
+      "title": "identity-export.json",
+      "width": 768,
+      "documentWidth": 753
+    },
+    {
+      "title": "Incident timeline",
+      "width": 768,
+      "documentWidth": 768
+    },
+    {
+      "title": "Correlation graph",
+      "width": 768,
+      "documentWidth": 753
+    },
+    {
+      "title": "Protocol distribution",
+      "width": 768,
+      "documentWidth": 753
+    },
+    {
+      "title": "Research Lab",
+      "width": 768,
+      "documentWidth": 768
+    },
+    {
+      "title": "Local accounts",
+      "width": 768,
+      "documentWidth": 753
+    }
+  ],
+  "pageErrors": [],
+  "apiErrors": [],
+  "verified": {
+    "dashboard": [
+      5,
+      11,
+      20,
+      112
+    ],
+    "filteredExportRows": 1,
+    "graph": [
+      "selection",
+      "zoom",
+      "keyboard pan",
+      "fit",
+      "relationship filter",
+      "evidence links",
+      "entity browser"
+    ],
+    "research": {
+      "conditions": 26,
+      "seeds": 5,
+      "baselineSummaries": 5
+    },
+    "reports": {
+      "pdfBytes": 45895,
+      "htmlBytes": 7448
+    },
+    "caseContext": "Same case across seven shortcuts and reload"
+  }
+}

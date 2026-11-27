@@ -24,72 +24,72 @@ function Trend({ trend }: { trend: [string, number][] }) {
   if (!trend.length)
     return <Empty>Import timestamped evidence to see event volume.</Empty>;
   const max = Math.max(...trend.map(([, value]) => value), 1);
-  const step = 540 / Math.max(trend.length - 1, 1);
-  const points = trend.map(([, value], index) => [
-    48 + index * step,
-    153 - (value * 120) / max,
-  ]);
-  const line = points.map((point) => point.join(",")).join(" ");
+  const tick = Math.max(1, Math.ceil(max / 4));
+  const ceiling = tick * 4;
+  const width = 540 / trend.length;
+  const labelDates = trend.length <= 7 ? 1 : 2;
   return (
-    <svg
-      className="trend-chart"
-      viewBox="0 0 620 190"
-      role="img"
-      aria-label="Daily event volume in UTC"
-    >
-      <defs>
-        <linearGradient id="trend-fill" x2="0%" y2="100%">
-          <stop stopColor="#34c9df" stopOpacity=".24" />
-          <stop offset="100%" stopColor="#34c9df" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[0, 1, 2, 3].map((index) => (
-        <g key={index}>
-          <line
-            x1="48"
-            x2="588"
-            y1={33 + index * 40}
-            y2={33 + index * 40}
-            stroke="#263345"
-            strokeDasharray="4 5"
-          />
-          <text x="36" y={37 + index * 40} textAnchor="end">
-            {Math.round((max * (3 - index)) / 3)}
-          </text>
-        </g>
-      ))}
-      {trend.length > 1 && (
-        <polygon fill="url(#trend-fill)" points={line + " 588,153 48,153"} />
-      )}
-      <polyline
-        fill="none"
-        stroke="#55d8eb"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-        points={line}
-      />
-      {points.map(([x, y], index) => (
-        <g key={index}>
-          <circle
-            cx={x}
-            cy={y}
-            r="4.5"
-            fill="#142534"
-            stroke="#6de0ec"
-            strokeWidth="2"
-          >
-            <title>
-              {trend[index][0]} UTC · {trend[index][1]} events
-            </title>
-          </circle>
-          {(trend.length < 8 || index % 2 === 0) && (
-            <text x={x} y="177" textAnchor="middle">
-              {trend[index][0].slice(5)}
+    <div className="trend-panel">
+      <svg
+        className="trend-chart"
+        viewBox="0 0 620 190"
+        role="img"
+        aria-label="Event volume by recorded UTC date"
+      >
+        {[0, 1, 2, 3, 4].map((index) => (
+          <g key={index}>
+            <line
+              x1="48"
+              x2="588"
+              y1={22 + index * 32}
+              y2={22 + index * 32}
+              stroke="#2b3a4e"
+              strokeDasharray="4 5"
+            />
+            <text x="36" y={26 + index * 32} textAnchor="end">
+              {tick * (4 - index)}
             </text>
-          )}
-        </g>
-      ))}
-    </svg>
+          </g>
+        ))}
+        {trend.map(([day, value], index) => {
+          const center = 48 + width * (index + 0.5);
+          const barWidth = Math.min(52, width * 0.7);
+          const height = (value * 128) / ceiling;
+          return (
+            <g key={day}>
+              <rect
+                className="trend-bar"
+                x={center - barWidth / 2}
+                y={150 - height}
+                width={barWidth}
+                height={height}
+                rx="3"
+              >
+                <title>
+                  {day} UTC · {value} events
+                </title>
+              </rect>
+              {index % labelDates === 0 && (
+                <text x={center} y="175" textAnchor="middle">
+                  {day.slice(5)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <details className="trend-data">
+        <summary>Daily counts</summary>
+        <ul>
+          {trend.map(([day, value]) => (
+            <li key={day}>
+              <time dateTime={day}>{day}</time>
+              <strong>{value.toLocaleString()}</strong>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
   );
 }
 function Severity({ values }: { values: Record<string, number> }) {
@@ -208,7 +208,7 @@ export function Overview({ username }: { username: string }) {
             )}
             <div className="stats-grid">
               {stats.map(([title, value, detail, Icon, color]) => (
-                <section key={title} className="stat-card">
+                <section key={title} className={"stat-card stat-" + color}>
                   <div className="stat-title">
                     {title}
                     <span className={"stat-icon " + color}>
@@ -223,8 +223,7 @@ export function Overview({ username }: { username: string }) {
             <div className="chart-grid">
               <Panel
                 title="Event volume"
-                hint="Normalized forensic events by UTC date"
-                action={<span className="section-chip">Latest 14 dates</span>}
+                hint="Most recent recorded UTC dates · dates without events are omitted"
               >
                 <Trend trend={data.trend} />
               </Panel>

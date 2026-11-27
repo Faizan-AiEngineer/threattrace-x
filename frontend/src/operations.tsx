@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Download, FlaskConical, Save, ShieldCheck } from "lucide-react";
 import { api, download } from "./api";
-import type { Case, Page, Rule, User } from "./api";
-import { Bars } from "./analysisViews";
+import type { Rule, User } from "./api";
+import { AdminSettings, PasswordChange } from "./access";
 import {
   Badge,
   date,
@@ -12,6 +12,7 @@ import {
   formData,
   label,
   Load,
+  Modal,
   Panel,
   Table,
   useAction,
@@ -129,132 +130,8 @@ export function RuleSettings({ user }: { user: User }) {
     </>
   );
 }
-function AdminSettings() {
-  const list = useData<User[]>("/users");
-  const cases = useData<Page<Case>>("/cases?limit=200");
-  const add = useAction(),
-    access = useAction();
-  return (
-    <div className="chart-grid equal">
-      <Panel title="Local accounts">
-        <div className="panel-body">
-          <Load state={list}>
-            {(items) => (
-              <ul>
-                {items.map((user) => (
-                  <li key={user.id}>
-                    {user.username} · {user.role}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Load>
-          <form
-            className="form room"
-            onSubmit={(event) => {
-              const form = event.currentTarget;
-              const data = formData(event);
-              void add.run(async () => {
-                await api("/users", "POST", Object.fromEntries(data));
-                list.refresh();
-                form.reset();
-              }, "Local account created.");
-            }}
-          >
-            <label>
-              New username
-              <input name="username" required minLength={3} />
-            </label>
-            <label>
-              Temporary password
-              <input
-                type="password"
-                name="password"
-                required
-                minLength={12}
-                autoComplete="new-password"
-              />
-            </label>
-            <label>
-              Role
-              <select name="role">
-                <option>investigator</option>
-                <option>administrator</option>
-              </select>
-            </label>
-            <Feedback message={add.message} error={add.error} />
-            <button className="primary" disabled={add.busy}>
-              Create account
-            </button>
-          </form>
-        </div>
-      </Panel>
-      <Panel
-        title="Case access"
-        hint="Share or revoke a selected investigation for a local user"
-      >
-        <div className="panel-body">
-          <form
-            className="form"
-            onSubmit={(event) => {
-              const data = formData(event);
-              const method = String(data.get("operation"));
-              if (
-                method === "DELETE" &&
-                !window.confirm("Revoke access for this user?")
-              )
-                return;
-              void access.run(async () => {
-                await api(
-                  "/cases/" + data.get("case") + "/access/" + data.get("user"),
-                  method,
-                );
-              }, "Case access updated.");
-            }}
-          >
-            <label>
-              Case
-              <select name="case" required>
-                <option value="">Select a case</option>
-                {cases.data?.items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Account
-              <select name="user" required>
-                <option value="">Select an account</option>
-                {list.data?.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.username}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Operation
-              <select name="operation">
-                <option value="PUT">Grant access</option>
-                <option value="DELETE">Revoke access</option>
-              </select>
-            </label>
-            <Feedback
-              error={access.error ?? cases.error}
-              message={access.message}
-            />
-            <button className="primary" disabled={access.busy}>
-              Apply permission
-            </button>
-          </form>
-        </div>
-      </Panel>
-    </div>
-  );
-}
 export function SettingsView({ user }: { user: User }) {
+  const [changing, setChanging] = useState(false);
   return (
     <>
       <div className="page-heading">
@@ -271,7 +148,19 @@ export function SettingsView({ user }: { user: User }) {
           ])}
         </div>
       </Panel>
-      {user.role === "administrator" && <AdminSettings />}
+      <div className="actions settings-session-actions">
+        <button onClick={() => setChanging(true)}>Change my password</button>
+      </div>
+      {changing && (
+        <Modal title="Change password" close={() => setChanging(false)}>
+          <PasswordChange
+            onChanged={() =>
+              window.dispatchEvent(new Event("ttx-session-expired"))
+            }
+          />
+        </Modal>
+      )}
+      {user.role === "administrator" && <AdminSettings user={user} />}
     </>
   );
 }
@@ -296,6 +185,7 @@ type ExperimentRow = {
   score?: number;
   result?: string;
   events?: number;
+  relationships?: number;
 };
 type Results = {
   available: boolean;
@@ -306,8 +196,79 @@ type Results = {
   rows: ExperimentRow[];
   configuration: Record<string, string | number>;
 };
+type Estimate = { mean: number; sample_sd: number };
+type MultiSeed = {
+  available: boolean;
+  seeds: number[];
+  summary: {
+    experiment: string;
+    method: string;
+    precision: Estimate;
+    recall: Estimate;
+    f1: Estimate;
+    false_positive_rate: Estimate;
+  }[];
+};
+
+const researchMetrics = [
+  ["Precision", "precision"],
+  ["Recall", "recall"],
+  ["F1-score", "f1"],
+] as const;
+const number = (value?: number) =>
+  value === undefined ? "—" : value.toFixed(3);
+const percent = (value?: number) =>
+  value === undefined ? "—" : (value * 100).toFixed(1) + "%";
+
+function BenchmarkChart({
+  rows,
+  runtime,
+}: {
+  rows: ExperimentRow[];
+  runtime: boolean;
+}) {
+  const measures = runtime
+    ? ([
+        ["Total runtime", "seconds"],
+        ["Correlation", "correlation_seconds"],
+      ] as const)
+    : researchMetrics;
+  const maximum = runtime
+    ? Math.max(1, ...rows.map((row) => row.seconds ?? 0))
+    : 1;
+  const showMethod = new Set(rows.map(({ method }) => method)).size > 1;
+  return (
+    <div className="benchmark-chart">
+      {rows.map((row) => (
+        <div key={row.method + ":" + row.condition} className="benchmark-row">
+          <strong>{showMethod ? label(row.method) : row.condition}</strong>
+          <div className="benchmark-measures">
+            {measures.map(([title, key]) => (
+              <div key={key} className={"benchmark-measure " + key}>
+                <span>{title}</span>
+                <meter
+                  min={0}
+                  max={maximum}
+                  value={row[key] ?? 0}
+                  aria-label={
+                    title + " for " + (showMethod ? row.method : row.condition)
+                  }
+                />
+                <strong>
+                  {runtime ? number(row[key]) + " s" : percent(row[key])}
+                </strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Research() {
   const state = useData<Results>("/research");
+  const multi = useData<MultiSeed>("/research/multi-seed");
   const action = useAction();
   const [experiment, setExperiment] = useState("detection");
   return (
@@ -319,7 +280,7 @@ export function Research() {
           </span>
           <h1>Research Lab</h1>
           <p>
-            Reproducible measurements of evidence-aware forensic reconstruction.
+            Recorded detection, correlation and evidence-handling benchmarks.
           </p>
         </div>
         <div className="actions">
@@ -337,7 +298,7 @@ export function Research() {
                 )
               }
             >
-              <Download size={16} /> {format.toUpperCase()}
+              <Download size={16} /> Results {format.toUpperCase()}
             </button>
           ))}
         </div>
@@ -348,23 +309,20 @@ export function Research() {
           if (!data.available)
             return (
               <Panel title="Experiment results">
-                <Empty>
-                  Run the reproducible experiment suite to populate this
-                  workspace.
-                </Empty>
+                <Empty>No recorded benchmark results are available.</Empty>
               </Panel>
             );
           const rows = data.rows.filter((row) => row.experiment === experiment);
-          const perf = rows.some((row) => row.f1 !== undefined);
+          const scores = rows.some((row) => row.f1 !== undefined);
           const runtime = experiment === "scalability";
-          const metric = (value?: number) =>
-            value === undefined ? "—" : value.toFixed(3);
+          const errors = rows.some((row) => row.order_errors !== undefined);
+          const baseHeaders = ["Method", "Condition"];
           return (
             <>
-              <div className="stat-summary">
+              <div className="stat-summary research-stats">
                 <div>
-                  <strong>{data.seed}</strong>
-                  <small>Random seed</small>
+                  <strong>{data.configuration.scenarios}</strong>
+                  <small>Synthetic scenarios</small>
                 </div>
                 <div>
                   <strong>{Object.keys(data.descriptions).length}</strong>
@@ -374,103 +332,90 @@ export function Research() {
                   <strong>{data.rows.length}</strong>
                   <small>Measured conditions</small>
                 </div>
+                <div>
+                  <strong>{data.seed}</strong>
+                  <small>Primary run seed</small>
+                </div>
               </div>
-              <div className="chart-grid equal">
-                <Panel
-                  title="Experiment selection"
-                  hint={"Recorded " + date(data.generated_at) + " UTC"}
-                >
-                  <div className="panel-body">
-                    <label className="filter">
-                      <span>Experiment</span>
-                      <select
-                        value={experiment}
-                        onChange={(event) => setExperiment(event.target.value)}
-                      >
-                        {Object.keys(data.descriptions).map((name) => (
-                          <option key={name} value={name}>
-                            {label(name)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <p>{data.descriptions[experiment]}</p>
-                  </div>
-                </Panel>
-                <Panel
-                  title={
-                    perf
-                      ? "F1 by measured condition"
-                      : runtime
-                        ? "Processing seconds"
-                        : "Confidence index or verification outcome"
-                  }
-                >
-                  <Bars
-                    values={rows.flatMap((row) => {
-                      const value = perf
-                        ? row.f1
-                        : runtime
-                          ? row.seconds
-                          : (row.score ??
-                            (row.result === undefined
-                              ? undefined
-                              : Number(row.result === "pass")));
-                      return value === undefined
-                        ? []
-                        : [
-                            [row.method + " · " + row.condition, value] as [
-                              string,
-                              number,
-                            ],
-                          ];
-                    })}
-                  />
-                </Panel>
-              </div>
-              <Panel title="Measured results">
+              <Panel
+                title="Recorded experiment"
+                hint={date(data.generated_at) + " UTC"}
+                action={
+                  <select
+                    aria-label="Experiment"
+                    value={experiment}
+                    onChange={(event) => setExperiment(event.target.value)}
+                  >
+                    {Object.keys(data.descriptions).map((name) => (
+                      <option key={name} value={name}>
+                        {label(name)}
+                      </option>
+                    ))}
+                  </select>
+                }
+              >
+                <p className="benchmark-description">
+                  {data.descriptions[experiment]}
+                </p>
+                {(scores || runtime) && (
+                  <BenchmarkChart rows={rows} runtime={runtime} />
+                )}
+              </Panel>
+              <Panel
+                title="Measured results"
+                hint={
+                  scores
+                    ? "Precision, recall, F1 and false-positive rates are shown as percentages."
+                    : runtime
+                      ? "Recorded wall time, correlation time, throughput and memory."
+                      : undefined
+                }
+              >
                 <Table
                   headers={
-                    perf
+                    scores
                       ? [
-                          "Method",
-                          "Condition",
+                          ...baseHeaders,
                           "Precision",
                           "Recall",
-                          "F1",
-                          "FPR",
+                          "F1-score",
+                          "False-positive rate",
                           "TP / FP / TN / FN",
-                          "Order errors",
+                          ...(errors ? ["Order errors"] : []),
                         ]
                       : runtime
                         ? [
+                            "Condition",
                             "Events",
-                            "Runtime (s)",
+                            "Total runtime (s)",
                             "Correlation (s)",
                             "Events/s",
                             "Peak MiB",
+                            "Relationships",
                           ]
-                        : ["Method", "Condition", "Outcome", "Score"]
+                        : [...baseHeaders, "Outcome", "Score"]
                   }
                   rows={rows.map((row) =>
-                    perf
+                    scores
                       ? [
                           row.method,
                           row.condition,
-                          metric(row.precision),
-                          metric(row.recall),
-                          metric(row.f1),
-                          metric(row.false_positive_rate),
+                          percent(row.precision),
+                          percent(row.recall),
+                          percent(row.f1),
+                          percent(row.false_positive_rate),
                           [row.tp, row.fp, row.tn, row.fn].join(" / "),
-                          row.order_errors ?? "—",
+                          ...(errors ? [row.order_errors ?? "—"] : []),
                         ]
                       : runtime
                         ? [
-                            row.events,
-                            metric(row.seconds),
-                            metric(row.correlation_seconds),
-                            metric(row.throughput),
-                            metric(row.peak_mib),
+                            row.condition,
+                            row.events?.toLocaleString(),
+                            number(row.seconds),
+                            number(row.correlation_seconds),
+                            number(row.throughput),
+                            number(row.peak_mib),
+                            row.relationships?.toLocaleString(),
                           ]
                         : [
                             row.method,
@@ -481,8 +426,51 @@ export function Research() {
                   )}
                 />
               </Panel>
+              <Load state={multi}>
+                {(recorded) => {
+                  if (!recorded.available) return null;
+                  const methods = recorded.summary.filter((row) =>
+                    experiment === "detection" || experiment === "correlation"
+                      ? row.experiment === experiment
+                      : true,
+                  );
+                  const estimate = (metric: Estimate) =>
+                    percent(metric.mean) +
+                    " ± " +
+                    (metric.sample_sd * 100).toFixed(1) +
+                    " pp";
+                  return (
+                    <Panel
+                      title="Multi-seed baseline comparison"
+                      hint={
+                        "Mean ± sample standard deviation · Seeds " +
+                        recorded.seeds.join(", ")
+                      }
+                    >
+                      <Table
+                        headers={[
+                          "Experiment",
+                          "Method",
+                          "Precision",
+                          "Recall",
+                          "F1-score",
+                          "False-positive rate",
+                        ]}
+                        rows={methods.map((row) => [
+                          label(row.experiment),
+                          row.method,
+                          estimate(row.precision),
+                          estimate(row.recall),
+                          estimate(row.f1),
+                          estimate(row.false_positive_rate),
+                        ])}
+                      />
+                    </Panel>
+                  );
+                }}
+              </Load>
               <div className="chart-grid equal">
-                <Panel title="Dataset and baseline configuration">
+                <Panel title="Experimental conditions">
                   <div className="panel-body">
                     {definition(
                       Object.entries(data.configuration).map(([key, value]) => [
@@ -492,14 +480,12 @@ export function Research() {
                     )}
                   </div>
                 </Panel>
-                <Panel title="Experimental limitations">
-                  <div className="panel-body">
-                    <ul>
-                      {data.limitations.map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
+                <Panel title="Research limitations">
+                  <ul className="research-limitations">
+                    {data.limitations.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
                 </Panel>
               </div>
             </>
